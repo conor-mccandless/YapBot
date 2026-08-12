@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./packages/domain" },
+    { "path": "./packages/db" },
+    { "path": "./packages/discord" },
+    { "path": "./apps/worker" }
+  ]
+}

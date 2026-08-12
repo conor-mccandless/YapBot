@@ -1,0 +1,20 @@
+{
+  "name": "@yapbot/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/main.js",
+  "scripts": {
+    "dev": "tsx --env-file=../../.env watch src/main.ts",
+    "start": "node --enable-source-maps dist/main.js"
+  },
+  "dependencies": {
+    "@yapbot/config": "workspace:*",
+    "@yapbot/db": "workspace:*",
+    "@yapbot/discord": "workspace:*",
+    "@yapbot/domain": "workspace:*",
+    "discord.js": "14.27.0",
+    "openai": "^7.4.0",
+    "pino": "10.3.1"
+  }
+}

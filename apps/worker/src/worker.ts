@@ -1,0 +1,321 @@
+import type { AppEnvironment } from "@yapbot/config";
+import type { YapBotRepository } from "@yapbot/db";
+import {
+  MESSAGE_CONTENT_GATEWAY_INTENT,
+  REQUIRED_GATEWAY_INTENTS,
+  YAP_COMMAND_JSON,
+} from "@yapbot/discord";
+import { KeyedMutex, RollingTriggerDetector } from "@yapbot/domain";
+import { ChannelType, Client, Events } from "discord.js";
+import type { Logger } from "pino";
+
+import { handleYapCommand } from "./commands.js";
+import {
+  createDiscordImageReference,
+  downloadDiscordImages,
+  RecentImageContextStore,
+} from "./image-context.js";
+import {
+  createOpenAITextRequest,
+  YapResponseGenerator,
+} from "./response-generator.js";
+import { matchesConfiguredTarget } from "./targeting.js";
+
+export interface RunningWorker {
+  stop(): Promise<void>;
+}
+
+export async function startWorker(
+  environment: AppEnvironment,
+  logger: Logger,
+  repository: YapBotRepository,
+): Promise<RunningWorker> {
+  const client = new Client({
+    intents: [
+      ...REQUIRED_GATEWAY_INTENTS,
+      ...(environment.OPENAI_API_KEY ? [MESSAGE_CONTENT_GATEWAY_INTENT] : []),
+    ],
+  });
+  const allowedGuildIds = new Set(environment.ALLOWED_GUILD_IDS);
+  const detector = new RollingTriggerDetector();
+  const imageContextStore = new RecentImageContextStore();
+  const mutex = new KeyedMutex();
+  const responseGenerator = new YapResponseGenerator(
+    environment.OPENAI_API_KEY
+      ? createOpenAITextRequest({
+          apiKey: environment.OPENAI_API_KEY,
+          ...(environment.OPENAI_IMAGE_MODEL
+            ? { imageModel: environment.OPENAI_IMAGE_MODEL }
+            : {}),
+          maxOutputTokens: environment.OPENAI_MAX_OUTPUT_TOKENS,
+          model: environment.OPENAI_MODEL,
+          reasoningEffort: environment.OPENAI_REASONING_EFFORT,
+          timeoutMs: environment.OPENAI_TIMEOUT_MS,
+        })
+      : undefined,
+  );
+
+  client.once(Events.ClientReady, async (readyClient) => {
+    logger.info(
+      {
+        approvedGuildCount: environment.ALLOWED_GUILD_IDS.length,
+        botUserId: readyClient.user.id,
+        openAIEnabled: responseGenerator.openAIConfigured,
+      },
+      "Discord worker ready",
+    );
+
+    for (const guild of readyClient.guilds.cache.values()) {
+      if (!allowedGuildIds.has(guild.id)) {
+        logger.warn({ guildId: guild.id }, "Ignoring unapproved guild");
+        continue;
+      }
+
+      try {
+        await guild.commands.set([YAP_COMMAND_JSON]);
+        logger.info({ guildId: guild.id }, "Registered guild commands");
+      } catch (error) {
+        logger.error(
+          { error, guildId: guild.id },
+          "Failed to register guild commands",
+        );
+      }
+    }
+  });
+
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (
+      !interaction.isChatInputCommand() ||
+      interaction.commandName !== "yap"
+    ) {
+      return;
+    }
+
+    logger.info(
+      {
+        command: interaction.options.getSubcommand(false),
+        guildId: interaction.guildId,
+        interactionAgeMs: Date.now() - interaction.createdTimestamp,
+      },
+      "Received YapBot command",
+    );
+
+    try {
+      await handleYapCommand(interaction, {
+        allowedGuildIds,
+        detector,
+        imageContextStore,
+        repository,
+      });
+    } catch (error) {
+      logger.error(
+        {
+          command: interaction.options.getSubcommand(false),
+          error,
+          guildId: interaction.guildId,
+          interactionAgeMs: Date.now() - interaction.createdTimestamp,
+        },
+        "Command failed",
+      );
+      const response = {
+        content: "YapBot could not complete that command.",
+        ephemeral: true,
+      };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(response.content).catch(() => undefined);
+      } else {
+        await interaction.reply(response).catch(() => undefined);
+      }
+    }
+  });
+
+  client.on(Events.MessageCreate, async (message) => {
+    if (
+      !message.inGuild() ||
+      !allowedGuildIds.has(message.guildId) ||
+      message.author.bot ||
+      message.webhookId ||
+      message.system ||
+      message.channel.type !== ChannelType.GuildText
+    ) {
+      return;
+    }
+
+    const key = `${message.guildId}:${message.author.id}`;
+    await mutex.runExclusive(key, async () => {
+      const config = await repository.getGuildConfig(message.guildId);
+      const channelAllowed =
+        message.channelId === config?.channelId ||
+        (config?.enabled
+          ? await repository.isGuildChannelAllowed(
+              message.guildId,
+              message.channelId,
+            )
+          : false);
+      if (
+        !config?.enabled ||
+        !channelAllowed ||
+        !matchesConfiguredTarget(
+          config,
+          message.author.id,
+          (roleId) => message.member?.roles.cache.has(roleId) ?? false,
+        )
+      ) {
+        return;
+      }
+
+      const decision = detector.evaluate({
+        cooldownSeconds: config.cooldownSeconds,
+        guildId: message.guildId,
+        nowMs: Date.now(),
+        threshold: config.threshold,
+        userId: message.author.id,
+        windowSeconds: config.windowSeconds,
+      });
+      const nowMs = Date.now();
+      const messageImages = [...message.attachments.values()]
+        .map((attachment) => createDiscordImageReference(attachment))
+        .filter((image) => image !== undefined);
+      imageContextStore.record({
+        guildId: message.guildId,
+        images: messageImages,
+        nowMs,
+        userId: message.author.id,
+        windowSeconds: config.windowSeconds,
+      });
+      if (decision.outcome !== "trigger") {
+        return;
+      }
+
+      const startedAt = Date.now();
+      let outcome: "openai_response" | "send_failed" | "static_response";
+      try {
+        const recentImages = imageContextStore.getRecent({
+          guildId: message.guildId,
+          nowMs,
+          userId: message.author.id,
+          windowSeconds: config.windowSeconds,
+        });
+        const imageDataUrls = responseGenerator.openAIConfigured
+          ? await downloadDiscordImages(recentImages)
+          : [];
+
+        let personaDescription: string | undefined;
+        try {
+          personaDescription = (
+            await repository.getUserPersona(message.guildId, message.author.id)
+          )?.description;
+        } catch (error) {
+          logger.error(
+            { error, guildId: message.guildId, userId: message.author.id },
+            "Failed to load user persona",
+          );
+        }
+
+        let allowOpenAI = false;
+        if (responseGenerator.openAIConfigured) {
+          try {
+            allowOpenAI = await repository.tryReserveLlmGeneration(
+              message.guildId,
+              environment.OPENAI_DAILY_GUILD_LIMIT,
+            );
+          } catch (error) {
+            logger.error(
+              { error, guildId: message.guildId },
+              "Failed to reserve OpenAI generation quota",
+            );
+          }
+        }
+
+        const generated = await responseGenerator.generate(
+          message.content,
+          allowOpenAI,
+          personaDescription,
+          imageDataUrls,
+          {
+            messageCount: decision.count,
+            threshold: config.threshold,
+            windowSeconds: config.windowSeconds,
+          },
+        );
+        outcome =
+          generated.source === "openai" ? "openai_response" : "static_response";
+        if (
+          generated.source === "static" &&
+          responseGenerator.openAIConfigured
+        ) {
+          logger.warn(
+            {
+              fallbackReason: generated.fallbackReason,
+              guildId: message.guildId,
+              imageCount: imageDataUrls.length,
+              imageReferenceCount: recentImages.length,
+            },
+            "Used static response fallback",
+          );
+        }
+        const content = config.pingTarget
+          ? `<@${message.author.id}> ${generated.content}`
+          : generated.content;
+        await message.reply({
+          allowedMentions: {
+            parse: [],
+            repliedUser: false,
+            users: config.pingTarget ? [message.author.id] : [],
+          },
+          content,
+        });
+      } catch (error) {
+        outcome = "send_failed";
+        logger.error(
+          { channelId: message.channelId, error, guildId: message.guildId },
+          "Failed to send YapBot response",
+        );
+      }
+
+      await repository.recordTrigger({
+        channelId: message.channelId,
+        guildId: message.guildId,
+        latencyMs: Date.now() - startedAt,
+        messageCount: decision.count,
+        outcome,
+        userId: message.author.id,
+      });
+    });
+  });
+
+  client.on(Events.Warn, (warning) => {
+    logger.warn({ warning }, "Discord client warning");
+  });
+
+  client.on(Events.Error, (error) => {
+    logger.error({ error }, "Discord client error");
+  });
+
+  await client.login(environment.DISCORD_TOKEN);
+
+  const sweepInterval = setInterval(() => {
+    detector.sweep(Date.now(), 86_400 + 3_600);
+    imageContextStore.sweep(Date.now(), 86_400 + 3_600);
+  }, 60_000);
+  sweepInterval.unref();
+
+  const cleanupInterval = setInterval(
+    () => {
+      void repository.cleanupExpired().catch((error: unknown) => {
+        logger.error({ error }, "Metadata retention cleanup failed");
+      });
+    },
+    24 * 60 * 60 * 1_000,
+  );
+  cleanupInterval.unref();
+
+  return {
+    async stop() {
+      logger.info("Stopping Discord worker");
+      clearInterval(sweepInterval);
+      clearInterval(cleanupInterval);
+      client.destroy();
+    },
+  };
+}
