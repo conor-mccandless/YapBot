@@ -15,6 +15,7 @@ import {
   downloadDiscordImages,
   RecentImageContextStore,
 } from "./image-context.js";
+import { RecentMessageContextStore } from "./message-context.js";
 import {
   createOpenAITextRequest,
   YapResponseGenerator,
@@ -39,6 +40,7 @@ export async function startWorker(
   const allowedGuildIds = new Set(environment.ALLOWED_GUILD_IDS);
   const detector = new RollingTriggerDetector();
   const imageContextStore = new RecentImageContextStore();
+  const messageContextStore = new RecentMessageContextStore();
   const mutex = new KeyedMutex();
   const responseGenerator = new YapResponseGenerator(
     environment.OPENAI_API_KEY
@@ -105,6 +107,7 @@ export async function startWorker(
         allowedGuildIds,
         detector,
         imageContextStore,
+        messageContextStore,
         repository,
       });
     } catch (error) {
@@ -164,15 +167,25 @@ export async function startWorker(
         return;
       }
 
+      const nowMs = Date.now();
       const decision = detector.evaluate({
         cooldownSeconds: config.cooldownSeconds,
         guildId: message.guildId,
-        nowMs: Date.now(),
+        nowMs,
         threshold: config.threshold,
         userId: message.author.id,
         windowSeconds: config.windowSeconds,
       });
-      const nowMs = Date.now();
+      if (responseGenerator.openAIConfigured) {
+        messageContextStore.record({
+          channelId: message.channelId,
+          content: message.content,
+          guildId: message.guildId,
+          nowMs,
+          userId: message.author.id,
+          windowSeconds: config.windowSeconds,
+        });
+      }
       const messageImages = [...message.attachments.values()]
         .map((attachment) => createDiscordImageReference(attachment))
         .filter((image) => image !== undefined);
@@ -192,6 +205,13 @@ export async function startWorker(
       try {
         const recentImages = imageContextStore.getRecent({
           guildId: message.guildId,
+          nowMs,
+          userId: message.author.id,
+          windowSeconds: config.windowSeconds,
+        });
+        const recentMessages = messageContextStore.getRecent({
+          guildId: message.guildId,
+          limit: config.threshold,
           nowMs,
           userId: message.author.id,
           windowSeconds: config.windowSeconds,
@@ -237,6 +257,7 @@ export async function startWorker(
             threshold: config.threshold,
             windowSeconds: config.windowSeconds,
           },
+          recentMessages,
         );
         outcome =
           generated.source === "openai" ? "openai_response" : "static_response";
@@ -297,6 +318,7 @@ export async function startWorker(
   const sweepInterval = setInterval(() => {
     detector.sweep(Date.now(), 86_400 + 3_600);
     imageContextStore.sweep(Date.now(), 86_400 + 3_600);
+    messageContextStore.sweep(Date.now(), 86_400 + 3_600);
   }, 60_000);
   sweepInterval.unref();
 

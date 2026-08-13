@@ -24,6 +24,7 @@ export interface CommandContext {
   allowedGuildIds: ReadonlySet<string>;
   detector: RollingTriggerDetector;
   imageContextStore?: { clearGuild(guildId: string): void };
+  messageContextStore?: { clearGuild(guildId: string): void };
   repository: YapBotRepository;
 }
 
@@ -420,6 +421,7 @@ async function handleDisable(
 function clearRuntimeState(context: CommandContext, guildId: string): void {
   context.detector.clearGuild(guildId);
   context.imageContextStore?.clearGuild(guildId);
+  context.messageContextStore?.clearGuild(guildId);
 }
 
 async function handleStatus(

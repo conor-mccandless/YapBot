@@ -2,7 +2,7 @@
 
 YapBot is a private-beta Discord bot that watches one configured user or role across one or more configured standard text channels. When a matching member reaches a rolling message threshold, YapBot posts a dry, context-aware anti-yap reply in the channel that triggered it.
 
-OpenAI generation is optional. With an API key, YapBot can use the triggering message, recent eligible images, trigger metadata, and a per-user persona to generate its reply. Without an API key—or when generation fails or reaches its daily limit—it uses a built-in static response pool.
+OpenAI generation is optional. With an API key, YapBot can use the complete ordered threshold-sized message context, recent eligible images, trigger metadata, and a per-user persona to generate its reply. Without an API key—or when generation fails or reaches its daily limit—it uses a built-in static response pool.
 
 See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 
@@ -14,10 +14,10 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Counts are shared across configured channels. Two messages in one configured channel and one in another can satisfy a threshold of three.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
-- Optional OpenAI text and image understanding using the triggering text and up to three recent eligible images from the same member.
+- Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
 - One to three dry, understated sentences, limited to 18-75 words, combining a content-specific joke with an anti-yap nudge.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
-- In-memory message windows, image references, and cooldowns; these reset when the worker restarts or configuration changes.
+- In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
 - No voice-channel monitoring, voice transcription, voice-channel chat, threads, image generation, or dashboard.
 - No Discord message text, image bytes/URLs, or generated response text stored in YapBot's database or application logs.
@@ -397,7 +397,7 @@ Running `/yap setup` again replaces the target and entire channel list with the 
 | `/yap channel-remove channel:#channel` | Owner or Manage Server | Removes a monitored text channel. The final remaining channel cannot be removed.                                |
 | `/yap channels`                        | Any server member      | Lists all monitored text channels and the current count.                                                        |
 
-Adding or removing a channel clears current rolling counters, cooldowns, and recent in-memory image references. It does not disable monitoring.
+Adding or removing a channel clears current rolling counters, cooldowns, recent in-memory message text, and image references. It does not disable monitoring.
 
 ### Trigger behavior
 
@@ -414,7 +414,7 @@ The command is restricted to the owner or members with **Manage Server**. Every 
 | `cooldown-seconds` | `600`                     | Minimum time between replies for the same member. `0` disables cooldown.         |
 | `ping-target`      | `true`                    | Mentions the triggering member in YapBot's reply. Other mentions are suppressed. |
 
-Updating behavior clears all current in-memory counters, cooldowns, and image references for that server.
+Updating behavior clears all current in-memory counters, cooldowns, message text, and image references for that server.
 
 ### Per-user personas
 
@@ -446,6 +446,8 @@ Voice channels, voice audio, chat attached to voice channels, direct messages, a
 
 YapBot can understand eligible Discord image attachments but does not generate or send images.
 
+When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, ordered oldest to newest and labeled with their source channel IDs. Each message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. The final item is identified as the triggering message. Text from other members is not included.
+
 - Accepted formats: PNG, JPEG, and WEBP.
 - Maximum declared attachment size: 12 MiB per image.
 - Maximum downloaded image payload: 30 MiB per generation.
@@ -455,9 +457,9 @@ YapBot can understand eligible Discord image attachments but does not generate o
 - Redirects are rejected and each download is aborted after five seconds.
 - Image references, bytes, extracted text, and generated replies are not persisted by YapBot.
 
-If an image is rejected or unavailable, YapBot continues using any available triggering-message text. If both usable text and images are absent, it uses a static response.
+If an image is rejected or unavailable, YapBot continues using the ordered threshold message text. If both usable text and images are absent, it uses a static response.
 
-Inform test participants that qualifying message text, recent eligible images, trigger counts, threshold information, and administrator-supplied personas may be transmitted to OpenAI. YapBot's local database retains:
+Inform test participants that the threshold-sized set of qualifying message text, recent eligible images, source channel IDs, trigger counts, threshold information, and administrator-supplied personas may be transmitted to OpenAI. YapBot's local database retains:
 
 - Persona descriptions until an administrator clears them.
 - Trigger metadata for up to 30 days.

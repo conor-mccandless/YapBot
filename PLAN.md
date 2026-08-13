@@ -450,9 +450,9 @@ release until v1 behavior is stable.
   rolling-window duration) supplied to the model, which must combine a
   context-specific joke with a playful anti-yap nudge.
 - One deployment-owned OpenAI project key supplied through `.env`; no guild BYOK.
-- The triggering text plus at most three recent eligible Discord images from the
-  same member's rolling window are transmitted, with no persisted message or image
-  context.
+- The latest threshold-sized set of qualifying messages, ordered oldest to newest,
+  plus at most three recent eligible Discord images from the same member's rolling
+  window are transmitted, with no persisted message or image context.
 - Persona descriptions are persisted until cleared; message bodies and generated
   responses are never persisted by YapBot.
 - One configured default model with an optional image-request model override,
@@ -498,8 +498,9 @@ plane unless the dashboard is already stable.
 - Encrypted guild-owned credentials with versioned key rotation.
 - Promote the current OpenAI integration behind a reusable provider adapter.
 - Curated text-model catalog.
-- Last-five-message text context, requiring Message Content intent and an
-  explicit privacy disclosure.
+- Optional richer conversation context involving other participants, requiring a
+  separate privacy and product review. The current implementation includes only
+  the triggering member's threshold-sized message set.
 - Daily generation quota with PostgreSQL conditional reservation.
 - Provider deadline, bounded retry behavior, static fallback, and deterministic
   output word truncation.

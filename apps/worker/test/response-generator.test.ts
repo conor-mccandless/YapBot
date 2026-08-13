@@ -54,6 +54,50 @@ describe("YapResponseGenerator", () => {
     });
   });
 
+  it("passes the complete ordered threshold context to the OpenAI request", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(
+        "A three-part bulletin has been duly received. Give the channel a moment before issuing the sequel.",
+      );
+    const generator = new YapResponseGenerator(request, () => "fallback");
+    const messageContext = [
+      { channelId: "channel-1", content: "First important update." },
+      { channelId: "channel-2", content: "A related development." },
+      { channelId: "channel-1", content: "Final confirmation." },
+    ];
+
+    await generator.generate(
+      "Final confirmation.",
+      true,
+      undefined,
+      [],
+      undefined,
+      messageContext,
+    );
+
+    expect(request).toHaveBeenCalledWith({
+      messageContent: "Final confirmation.",
+      messageContext,
+    });
+  });
+
+  it("can generate when an earlier threshold message has text and the final message does not", async () => {
+    const request = vi.fn().mockResolvedValue("The sequence is complete.");
+    const generator = new YapResponseGenerator(request, () => "fallback");
+
+    await expect(
+      generator.generate("", true, undefined, [], undefined, [
+        { channelId: "channel-1", content: "Earlier context." },
+        { channelId: "channel-1", content: "" },
+      ]),
+    ).resolves.toEqual({
+      content: "The sequence is complete.",
+      source: "openai",
+    });
+    expect(request).toHaveBeenCalledOnce();
+  });
+
   it("uses static fallback when OpenAI is unavailable", async () => {
     const generator = new YapResponseGenerator(undefined, () => "fallback");
 
@@ -131,9 +175,16 @@ describe("YapResponseGenerator", () => {
 });
 
 describe("buildOpenAIInput", () => {
-  it("adds persona and message as untrusted request-time context", () => {
+  it("adds persona and ordered messages as untrusted request-time context", () => {
     const input = buildOpenAIInput({
       messageContent: "I know everything about archives.",
+      messageContext: [
+        { channelId: "channel-1", content: "The archive opens at nine." },
+        {
+          channelId: "channel-2",
+          content: "I know everything about archives.",
+        },
+      ],
       persona:
         "This guy works at a library and overheard people talking about something, which makes him a subject matter expert on it.",
       trigger: {
@@ -145,7 +196,9 @@ describe("buildOpenAIInput", () => {
 
     expect(input).toContain("untrusted JSON");
     expect(input).toContain("works at a library");
+    expect(input).toContain("The archive opens at nine.");
     expect(input).toContain("I know everything about archives.");
+    expect(input).toContain('"triggeringMessageSequence":2');
     expect(input).toContain(
       '"trigger":{"messageCount":3,"threshold":3,"windowSeconds":30}',
     );
@@ -169,12 +222,12 @@ describe("buildOpenAIInput", () => {
       persona: "p".repeat(600),
     });
     const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      discordMessages: Array<{ content: string }>;
       personaBackground: string;
-      triggeringDiscordMessage: string;
     };
 
     expect(json.personaBackground).toHaveLength(500);
-    expect(json.triggeringDiscordMessage).toHaveLength(2_000);
+    expect(json.discordMessages[0]?.content).toHaveLength(2_000);
   });
 });
 
