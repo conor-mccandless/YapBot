@@ -15,7 +15,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
 - Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
-- One to three dry, understated sentences, limited to 18-75 words, combining a content-specific joke with an anti-yap nudge.
+- One to three dry, understated sentences, limited to 18-75 words, making excessive posting part of a content-specific premise or punchline instead of appending a stock anti-yap warning.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.

@@ -203,7 +203,14 @@ describe("buildOpenAIInput", () => {
       '"trigger":{"messageCount":3,"threshold":3,"windowSeconds":30}',
     );
     expect(YAPBOT_INSTRUCTIONS).toContain("18 to 75 words");
-    expect(YAPBOT_INSTRUCTIONS).toContain("anti-yap nudge is required");
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "excessive posting serving as the premise or punchline",
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain("Avoid stock admonitions");
+    expect(YAPBOT_INSTRUCTIONS).not.toContain("clearly but playfully suggest");
+    expect(YAPBOT_INSTRUCTIONS).not.toContain("pace the yapping");
+    expect(YAPBOT_INSTRUCTIONS).not.toContain("let the channel breathe");
+    expect(YAPBOT_INSTRUCTIONS).not.toContain("give the channel a moment");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("works at a library");
   });
 
