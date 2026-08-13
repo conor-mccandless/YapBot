@@ -176,19 +176,20 @@ export async function startWorker(
         userId: message.author.id,
         windowSeconds: config.windowSeconds,
       });
+      const messageImages = [...message.attachments.values()]
+        .map((attachment) => createDiscordImageReference(attachment))
+        .filter((image) => image !== undefined);
       if (responseGenerator.openAIConfigured) {
         messageContextStore.record({
           channelId: message.channelId,
           content: message.content,
+          eligibleImageAttachmentCount: messageImages.length,
           guildId: message.guildId,
           nowMs,
           userId: message.author.id,
           windowSeconds: config.windowSeconds,
         });
       }
-      const messageImages = [...message.attachments.values()]
-        .map((attachment) => createDiscordImageReference(attachment))
-        .filter((image) => image !== undefined);
       imageContextStore.record({
         guildId: message.guildId,
         images: messageImages,

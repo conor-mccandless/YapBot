@@ -62,9 +62,21 @@ describe("YapResponseGenerator", () => {
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
     const messageContext = [
-      { channelId: "channel-1", content: "First important update." },
-      { channelId: "channel-2", content: "A related development." },
-      { channelId: "channel-1", content: "Final confirmation." },
+      {
+        channelId: "channel-1",
+        content: "First important update.",
+        eligibleImageAttachmentCount: 0,
+      },
+      {
+        channelId: "channel-2",
+        content: "A related development.",
+        eligibleImageAttachmentCount: 0,
+      },
+      {
+        channelId: "channel-1",
+        content: "Final confirmation.",
+        eligibleImageAttachmentCount: 0,
+      },
     ];
 
     await generator.generate(
@@ -88,8 +100,16 @@ describe("YapResponseGenerator", () => {
 
     await expect(
       generator.generate("", true, undefined, [], undefined, [
-        { channelId: "channel-1", content: "Earlier context." },
-        { channelId: "channel-1", content: "" },
+        {
+          channelId: "channel-1",
+          content: "Earlier context.",
+          eligibleImageAttachmentCount: 0,
+        },
+        {
+          channelId: "channel-1",
+          content: "",
+          eligibleImageAttachmentCount: 1,
+        },
       ]),
     ).resolves.toEqual({
       content: "The sequence is complete.",
@@ -179,10 +199,15 @@ describe("buildOpenAIInput", () => {
     const input = buildOpenAIInput({
       messageContent: "I know everything about archives.",
       messageContext: [
-        { channelId: "channel-1", content: "The archive opens at nine." },
+        {
+          channelId: "channel-1",
+          content: "The archive opens at nine.",
+          eligibleImageAttachmentCount: 0,
+        },
         {
           channelId: "channel-2",
           content: "I know everything about archives.",
+          eligibleImageAttachmentCount: 0,
         },
       ],
       persona:
@@ -207,11 +232,49 @@ describe("buildOpenAIInput", () => {
       "excessive posting serving as the premise or punchline",
     );
     expect(YAPBOT_INSTRUCTIONS).toContain("Avoid stock admonitions");
+    expect(YAPBOT_INSTRUCTIONS).toContain("Every reply must unmistakably");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("clearly but playfully suggest");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("pace the yapping");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("let the channel breathe");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("give the channel a moment");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("works at a library");
+  });
+
+  it("labels image-only threshold events using positive visual-post vocabulary", () => {
+    const input = buildOpenAIInput({
+      imageDataUrls: ["data:image/png;base64,AQID"],
+      messageContent: "",
+      messageContext: [
+        {
+          channelId: "channel-1",
+          content: "",
+          eligibleImageAttachmentCount: 1,
+        },
+      ],
+    });
+    const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      discordMessages: Array<{
+        content: string | null;
+        eligibleImageAttachmentCount: number;
+        postType: string;
+      }>;
+    };
+
+    expect(json.discordMessages).toEqual([
+      {
+        channelId: "channel-1",
+        content: null,
+        eligibleImageAttachmentCount: 1,
+        postType: "image_only",
+        sequence: 1,
+      },
+    ]);
+    expect(input).toContain("Entries marked image_only are visual posts");
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "refer to it as an image, meme, screenshot, or post",
+    );
+    expect(input).not.toContain("blank message");
+    expect(YAPBOT_INSTRUCTIONS).not.toContain("blank message");
   });
 
   it("keeps trigger context optional for backwards-compatible callers", () => {

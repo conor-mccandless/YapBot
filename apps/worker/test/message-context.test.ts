@@ -9,6 +9,7 @@ describe("RecentMessageContextStore", () => {
       store.record({
         channelId: index % 2 === 0 ? "channel-1" : "channel-2",
         content: `message ${index + 1}`,
+        eligibleImageAttachmentCount: index === 3 ? 1 : 0,
         guildId: "guild-1",
         nowMs: index * 1_000,
         userId: "user-1",
@@ -25,9 +26,21 @@ describe("RecentMessageContextStore", () => {
         windowSeconds: 30,
       }),
     ).toEqual([
-      { channelId: "channel-2", content: "message 2" },
-      { channelId: "channel-1", content: "message 3" },
-      { channelId: "channel-2", content: "message 4" },
+      {
+        channelId: "channel-2",
+        content: "message 2",
+        eligibleImageAttachmentCount: 0,
+      },
+      {
+        channelId: "channel-1",
+        content: "message 3",
+        eligibleImageAttachmentCount: 0,
+      },
+      {
+        channelId: "channel-2",
+        content: "message 4",
+        eligibleImageAttachmentCount: 1,
+      },
     ]);
   });
 
@@ -36,6 +49,7 @@ describe("RecentMessageContextStore", () => {
     store.record({
       channelId: "channel-1",
       content: "expired",
+      eligibleImageAttachmentCount: 0,
       guildId: "guild-1",
       nowMs: 0,
       userId: "user-1",
@@ -60,6 +74,7 @@ describe("RecentMessageContextStore", () => {
     store.record({
       channelId: "channel-1",
       content: "m".repeat(2_100),
+      eligibleImageAttachmentCount: 0,
       guildId: "guild-1",
       nowMs: 0,
       userId: "user-1",

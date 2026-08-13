@@ -15,7 +15,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
 - Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
-- One to three dry, understated sentences, limited to 18-75 words, making excessive posting part of a content-specific premise or punchline instead of appending a stock anti-yap warning.
+- One to three dry, understated sentences, limited to 18-75 words, always conveying a contextually flavored request to post less while avoiding a repeated stock warning.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
@@ -446,7 +446,7 @@ Voice channels, voice audio, chat attached to voice channels, direct messages, a
 
 YapBot can understand eligible Discord image attachments but does not generate or send images.
 
-When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, ordered oldest to newest and labeled with their source channel IDs. Each message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. The final item is identified as the triggering message. Text from other members is not included.
+When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, ordered oldest to newest and labeled with their source channel IDs and post type. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. The final item is identified as the triggering message. Text from other members is not included.
 
 - Accepted formats: PNG, JPEG, and WEBP.
 - Maximum declared attachment size: 12 MiB per image.

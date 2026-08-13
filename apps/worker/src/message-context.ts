@@ -4,6 +4,7 @@ const MAX_STORED_MESSAGES_PER_MEMBER = 100;
 export interface YapMessageContext {
   channelId: string;
   content: string;
+  eligibleImageAttachmentCount: number;
 }
 
 interface StoredMessageContext extends YapMessageContext {
@@ -21,6 +22,7 @@ export class RecentMessageContextStore {
   record(input: {
     channelId: string;
     content: string;
+    eligibleImageAttachmentCount: number;
     guildId: string;
     nowMs: number;
     userId: string;
@@ -40,6 +42,7 @@ export class RecentMessageContextStore {
       channelId: input.channelId,
       content: input.content.slice(0, MAX_DISCORD_MESSAGE_CHARACTERS),
       createdAtMs: input.nowMs,
+      eligibleImageAttachmentCount: input.eligibleImageAttachmentCount,
     });
     state.messages = state.messages.slice(-MAX_STORED_MESSAGES_PER_MEMBER);
     state.lastActivityMs = input.nowMs;
@@ -66,6 +69,7 @@ export class RecentMessageContextStore {
     return state.messages.slice(-input.limit).map((message) => ({
       channelId: message.channelId,
       content: message.content,
+      eligibleImageAttachmentCount: message.eligibleImageAttachmentCount,
     }));
   }
 
