@@ -294,6 +294,7 @@ describe("response decision tree and prompt context", () => {
       directAddressSequence: 2,
       mode: "direct_address",
       primaryMessageSequence: 2,
+      rationaleFlavor: "generic",
     });
 
     const input = buildOpenAIInput({
@@ -310,6 +311,7 @@ describe("response decision tree and prompt context", () => {
         directAddressSequence: number;
         mode: string;
         primaryMessageSequence: number;
+        rationaleFlavor: string;
       };
     };
 
@@ -317,6 +319,7 @@ describe("response decision tree and prompt context", () => {
       directAddressSequence: 2,
       mode: "direct_address",
       primaryMessageSequence: 2,
+      rationaleFlavor: "generic",
     });
     expect(json.conversationWindow[1]).toMatchObject({
       directlyAddressesYapBot: true,
@@ -336,6 +339,7 @@ describe("response decision tree and prompt context", () => {
       directAddressSequence: null,
       mode: "threshold_roast",
       primaryMessageSequence: 3,
+      rationaleFlavor: "generic",
     });
   });
 
@@ -356,7 +360,7 @@ describe("response decision tree and prompt context", () => {
         imageSequence: number;
         sourceMessageSequence: number;
       }>;
-      responseDecision: { mode: string };
+      responseDecision: { mode: string; rationaleFlavor: string };
     };
 
     expect(json.imageManifest).toEqual([
@@ -385,6 +389,7 @@ describe("response decision tree and prompt context", () => {
 
     expect(json.trigger).toBeNull();
     expect(json.responseDecision.mode).toBe("threshold_roast");
+    expect(json.responseDecision.rationaleFlavor).toBe("persona_callback");
     expect(json.personaProfile).toHaveLength(2_000);
     expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
@@ -401,7 +406,11 @@ describe("response decision tree and prompt context", () => {
     );
     expect(YAPBOT_INSTRUCTIONS).not.toContain("18 to 75 words");
     expect(YAPBOT_INSTRUCTIONS).toContain("coffee-run self-own in 4K");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v4");
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "sentence two must use exactly one recognizable persona theme",
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain("kernel panic");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v5");
   });
 });
 

@@ -24,10 +24,10 @@ export const YAPBOT_STYLE_EXAMPLES = [
     "Bad: Inventing a deeper shared topic or calling three words an essay.",
   ],
   [
-    "Persona is irrelevant",
+    "Persona flavors the summon rationale",
     'Persona: "Makes recurring jokes about Linux kernels." / Window: "That defense was rough" / "No coverage at all" / "Fourth quarter was awful"',
-    'Good: "One bad quarter and you appointed yourself defensive coordinator. Three instant analyses summoned me, coach, so consolidate the next film session."',
-    "Bad: Forcing Linux jargon into an unrelated sports joke.",
+    'Good: "One bad quarter and you appointed yourself defensive coordinator. Three instant analyses caused a kernel panic, so batch the next hot takes before rebooting the channel."',
+    "Bad: Forcing kernel jargon into the football observation, using multiple persona themes, or omitting why the burst summoned YapBot.",
   ],
   [
     "Useful non-sensitive image",

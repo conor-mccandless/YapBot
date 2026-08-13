@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  collectDiscordMessageImages,
   createDiscordImageReference,
+  createDiscordImageReferenceFromUrl,
   downloadDiscordImages,
   isAllowedDiscordImageUrl,
   MAX_IMAGE_BYTES,
@@ -33,6 +35,45 @@ describe("Discord image validation", () => {
         url: "https://example.com/attachments/image.png",
       }),
     ).toBeUndefined();
+  });
+
+  it("accepts Discord CDN embed URLs without trusting a declared size", () => {
+    expect(createDiscordImageReferenceFromUrl(image.url)).toEqual({
+      contentType: "image/png",
+      size: null,
+      url: image.url,
+    });
+    expect(
+      createDiscordImageReferenceFromUrl(
+        "https://cdn.discordapp.com/attachments/123/456/image.gif",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("collects and deduplicates attachments, embeds, and pasted CDN links", () => {
+    expect(
+      collectDiscordMessageImages({
+        attachments: [image],
+        content: `${image.url}?signed=true`,
+        embedImageUrls: [
+          "https://media.discordapp.net/attachments/123/456/image.png?width=900",
+        ],
+      }),
+    ).toEqual([image]);
+
+    expect(
+      collectDiscordMessageImages({
+        attachments: [],
+        content: `look ${image.url}?signed=true`,
+        embedImageUrls: [],
+      }),
+    ).toEqual([
+      {
+        contentType: "image/png",
+        size: null,
+        url: `${image.url}?signed=true`,
+      },
+    ]);
   });
 });
 
@@ -101,6 +142,7 @@ describe("downloadDiscordImages", () => {
         [
           {
             ...image,
+            size: null,
             sourceAttachmentSequence: 2,
             sourceMessageId: "message-3",
           },

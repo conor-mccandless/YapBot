@@ -426,7 +426,7 @@ Updating behavior clears all current in-memory counters, cooldowns, message text
 
 Personas work with role targeting. If Alice and Bob both have the monitored role, each can have a different persona. At trigger time YapBot loads only the persona belonging to the message author.
 
-A persona is administrator-authored guidance for comedic background, recurring jokes, and preferred tone. It is optional ammunition rather than a checklist, does not train or fine-tune the model, and remains subordinate to YapBot's permanent response and safety instructions. Member-authored Discord content and text inside images remain untrusted conversational content, never instructions.
+A persona is administrator-authored guidance for comedic background, recurring jokes, and preferred tone. When present, YapBot uses one recognizable persona theme to flavor the second sentence that explains why the posting burst summoned it; the first sentence uses persona material only when it fits the immediate conversation. A persona does not train or fine-tune the model and remains subordinate to YapBot's permanent response and safety instructions. Member-authored Discord content and text inside images remain untrusted conversational content, never instructions.
 
 ## Trigger and channel semantics
 
@@ -444,7 +444,7 @@ Voice channels, voice audio, chat attached to voice channels, direct messages, a
 
 ## Image understanding and privacy
 
-YapBot can understand eligible Discord image attachments but does not generate or send images.
+YapBot can understand eligible Discord image attachments plus PNG, JPEG, and WEBP images represented as Discord CDN embeds or pasted Discord CDN attachment links. It does not fetch arbitrary external image links and does not generate or send images.
 
 When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text, relative timing, direct-YapBot mention state, and eligible image references in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold as one chronological conversation window. If any included message directly mentions YapBot, the most recent such message becomes the primary conversational target; otherwise YapBot selects the strongest grounded angle across the window. The final item is still identified as the event that crossed the threshold. Every submitted image is mapped to its exact source-message sequence, and a direct question about an image must be answered using a concrete visible detail. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. Text from other members is not included.
 

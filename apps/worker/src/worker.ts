@@ -11,11 +11,12 @@ import type { Logger } from "pino";
 
 import { handleYapCommand } from "./commands.js";
 import {
-  createDiscordImageReference,
+  collectDiscordMessageImages,
   downloadDiscordImages,
   RecentImageContextStore,
 } from "./image-context.js";
 import {
+  directlyAddressesYapBot,
   normalizeYapBotMention,
   RecentMessageContextStore,
 } from "./message-context.js";
@@ -182,16 +183,22 @@ export async function startWorker(
         userId: message.author.id,
         windowSeconds: config.windowSeconds,
       });
-      const messageImages = [...message.attachments.values()]
-        .map((attachment) => createDiscordImageReference(attachment))
-        .filter((image) => image !== undefined);
-      const directlyMentionsBot = client.user
-        ? message.mentions.users.has(client.user.id)
-        : false;
       const normalizedMessageContent = normalizeYapBotMention(
         message.content,
         client.user?.id,
       );
+      const messageImages = collectDiscordMessageImages({
+        attachments: [...message.attachments.values()],
+        content: message.content,
+        embedImageUrls: message.embeds.flatMap((embed) =>
+          [embed.image?.url, embed.thumbnail?.url].filter(
+            (url): url is string => url !== undefined,
+          ),
+        ),
+      });
+      const directlyMentionsBot =
+        (client.user ? message.mentions.users.has(client.user.id) : false) ||
+        directlyAddressesYapBot(normalizedMessageContent);
       if (responseGenerator.openAIConfigured) {
         messageContextStore.record({
           channelId: message.channelId,
@@ -244,7 +251,6 @@ export async function startWorker(
         const images = responseGenerator.openAIConfigured
           ? await downloadDiscordImages(conversationImageReferences)
           : [];
-        const responseDecision = selectResponseDecision(recentMessages);
 
         let personaDescription: string | undefined;
         try {
@@ -257,6 +263,10 @@ export async function startWorker(
             "Failed to load user persona",
           );
         }
+        const responseDecision = selectResponseDecision(
+          recentMessages,
+          Boolean(personaDescription?.trim()),
+        );
 
         let allowOpenAI = false;
         if (responseGenerator.openAIConfigured) {
@@ -290,8 +300,16 @@ export async function startWorker(
           {
             generationLatencyMs: Date.now() - generationStartedAt,
             conversationWindowMessageCount: recentMessages.length,
+            declaredConversationImageCount: recentMessages.reduce(
+              (total, recentMessage) =>
+                total + recentMessage.eligibleImageAttachmentCount,
+              0,
+            ),
             directAddressSequence: responseDecision.directAddressSequence,
+            imageDownloadFailureCount:
+              conversationImageReferences.length - images.length,
             imageCount: images.length,
+            imageReferenceCount: conversationImageReferences.length,
             model: responseGenerator.openAIConfigured
               ? selectOpenAIModel(
                   {
@@ -319,6 +337,7 @@ export async function startWorker(
             personaPresent: Boolean(personaDescription?.trim()),
             promptVersion: YAPBOT_PROMPT_VERSION,
             responseMode: responseDecision.mode,
+            responseRationaleFlavor: responseDecision.rationaleFlavor,
             reasoningEffort: environment.OPENAI_REASONING_EFFORT,
             source: generated.source,
           },

@@ -120,6 +120,10 @@ export function normalizeYapBotMention(
     .replaceAll(`<@!${botUserId}>`, "@YapBot");
 }
 
+export function directlyAddressesYapBot(content: string): boolean {
+  return /(?:^|\s)@YapBot\b/iu.test(content);
+}
+
 function memberKey(guildId: string, userId: string): string {
   return `${guildId}:${userId}`;
 }

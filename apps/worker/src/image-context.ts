@@ -16,7 +16,7 @@ const MAX_STORED_IMAGE_REFERENCES_PER_MEMBER = 12;
 
 export interface DiscordImageReference {
   contentType: string;
-  size: number;
+  size: number | null;
   sourceAttachmentSequence?: number;
   sourceMessageId?: string;
   url: string;
@@ -32,6 +32,12 @@ export interface DiscordAttachmentLike {
   contentType: string | null;
   size: number;
   url: string;
+}
+
+export interface DiscordMessageImageInput {
+  attachments: readonly DiscordAttachmentLike[];
+  content: string;
+  embedImageUrls: readonly string[];
 }
 
 interface StoredImageReference extends DiscordImageReference {
@@ -61,6 +67,51 @@ export function createDiscordImageReference(
     size: attachment.size,
     url: attachment.url,
   };
+}
+
+export function collectDiscordMessageImages(
+  input: DiscordMessageImageInput,
+): readonly DiscordImageReference[] {
+  const references = [
+    ...input.attachments
+      .map((attachment) => createDiscordImageReference(attachment))
+      .filter((image) => image !== undefined),
+    ...input.embedImageUrls
+      .map((url) => createDiscordImageReferenceFromUrl(url))
+      .filter((image) => image !== undefined),
+    ...(
+      input.content.match(
+        /https:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\/[^\s<>]+/giu,
+      ) ?? []
+    )
+      .map((url) => url.replace(/[),.!?]+$/u, ""))
+      .map((url) => createDiscordImageReferenceFromUrl(url))
+      .filter((image) => image !== undefined),
+  ];
+  const uniqueReferences = new Map<string, DiscordImageReference>();
+  for (const reference of references) {
+    const key = new URL(reference.url).pathname;
+    if (!uniqueReferences.has(key)) {
+      uniqueReferences.set(key, reference);
+    }
+  }
+
+  return [...uniqueReferences.values()];
+}
+
+export function createDiscordImageReferenceFromUrl(
+  value: string,
+): DiscordImageReference | undefined {
+  if (!isAllowedDiscordImageUrl(value)) {
+    return undefined;
+  }
+
+  const contentType = inferImageContentType(value);
+  if (!contentType) {
+    return undefined;
+  }
+
+  return { contentType, size: null, url: value };
 }
 
 export function isAllowedDiscordImageUrl(value: string): boolean {
@@ -179,9 +230,10 @@ export async function downloadDiscordImages(
     if (
       !SUPPORTED_IMAGE_TYPES.has(reference.contentType) ||
       !isAllowedDiscordImageUrl(reference.url) ||
-      reference.size <= 0 ||
-      reference.size > MAX_IMAGE_BYTES ||
-      totalBytes + reference.size > MAX_TOTAL_IMAGE_BYTES
+      (reference.size !== null && reference.size <= 0) ||
+      (reference.size !== null && reference.size > MAX_IMAGE_BYTES) ||
+      (reference.size !== null &&
+        totalBytes + reference.size > MAX_TOTAL_IMAGE_BYTES)
     ) {
       continue;
     }
@@ -235,6 +287,21 @@ export async function downloadDiscordImages(
   }
 
   return images;
+}
+
+function inferImageContentType(value: string): string | undefined {
+  const pathname = new URL(value).pathname.toLowerCase();
+  if (pathname.endsWith(".png")) {
+    return "image/png";
+  }
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (pathname.endsWith(".webp")) {
+    return "image/webp";
+  }
+
+  return undefined;
 }
 
 async function readResponseBody(

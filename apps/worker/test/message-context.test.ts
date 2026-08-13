@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  directlyAddressesYapBot,
   normalizeYapBotMention,
   RecentMessageContextStore,
 } from "../src/message-context.js";
@@ -13,6 +14,15 @@ describe("normalizeYapBotMention", () => {
         "123",
       ),
     ).toBe("@YapBot are you around? @YapBot answer me.");
+  });
+
+  it("recognizes a readable direct address when Discord metadata is absent", () => {
+    expect(directlyAddressesYapBot("@YapBot do you understand this?")).toBe(
+      true,
+    );
+    expect(directlyAddressesYapBot("a screenshot containing YapBot text")).toBe(
+      false,
+    );
   });
 });
 
