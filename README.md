@@ -15,7 +15,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
 - Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
-- One to three dry, understated sentences, limited to 18-75 words, always conveying a contextually flavored request to post less while avoiding a repeated stock warning.
+- Usually one sharp, direct 8-28 word reply, with up to 45 words when conversation, persona, or image context genuinely improves the joke.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
@@ -143,7 +143,7 @@ OPENAI_MODEL=gpt-5.6-luna
 OPENAI_IMAGE_MODEL=
 OPENAI_REASONING_EFFORT=medium
 OPENAI_DAILY_GUILD_LIMIT=100
-OPENAI_MAX_OUTPUT_TOKENS=800
+OPENAI_MAX_OUTPUT_TOKENS=160
 OPENAI_TIMEOUT_MS=10000
 
 DATABASE_URL=postgresql://yapbot:yapbot_dev@localhost:5432/yapbot
@@ -153,21 +153,21 @@ NODE_ENV=development
 
 ### Environment variable reference
 
-| Variable                   | Required    | Description                                                                                                    |
-| -------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
-| `DISCORD_TOKEN`            | Yes         | Current secret token from the Discord **Bot** page.                                                            |
-| `DISCORD_APPLICATION_ID`   | Yes         | Application ID from **General Information**.                                                                   |
-| `ALLOWED_GUILD_IDS`        | Yes         | Comma-separated list of approved Discord server IDs. At least one is required.                                 |
-| `OPENAI_API_KEY`           | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                          |
-| `OPENAI_MODEL`             | With OpenAI | Model for text-only and, by default, image-bearing requests.                                                   |
-| `OPENAI_IMAGE_MODEL`       | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                             |
-| `OPENAI_REASONING_EFFORT`  | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `medium`.                                       |
-| `OPENAI_DAILY_GUILD_LIMIT` | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.                    |
-| `OPENAI_MAX_OUTPUT_TOKENS` | No          | Provider output budget from 32-1,000; default is 800. YapBot separately truncates visible replies to 75 words. |
-| `OPENAI_TIMEOUT_MS`        | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                               |
-| `DATABASE_URL`             | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                             |
-| `LOG_LEVEL`                | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                                      |
-| `NODE_ENV`                 | No          | `development`, `test`, or `production`. Compose sets the worker to `production`.                               |
+| Variable                   | Required    | Description                                                                                               |
+| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`            | Yes         | Current secret token from the Discord **Bot** page.                                                       |
+| `DISCORD_APPLICATION_ID`   | Yes         | Application ID from **General Information**.                                                              |
+| `ALLOWED_GUILD_IDS`        | Yes         | Comma-separated list of approved Discord server IDs. At least one is required.                            |
+| `OPENAI_API_KEY`           | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                     |
+| `OPENAI_MODEL`             | With OpenAI | Model for text-only and, by default, image-bearing requests.                                              |
+| `OPENAI_IMAGE_MODEL`       | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                        |
+| `OPENAI_REASONING_EFFORT`  | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `medium`.                                  |
+| `OPENAI_DAILY_GUILD_LIMIT` | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.               |
+| `OPENAI_MAX_OUTPUT_TOKENS` | No          | Provider output budget from 32-1,000; default is 160. YapBot separately caps visible replies at 45 words. |
+| `OPENAI_TIMEOUT_MS`        | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                          |
+| `DATABASE_URL`             | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                        |
+| `LOG_LEVEL`                | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                                 |
+| `NODE_ENV`                 | No          | `development`, `test`, or `production`. Compose sets the worker to `production`.                          |
 
 `.env` and other local secret files are ignored by Git. Verify that with `git status --short` before committing.
 
@@ -426,7 +426,7 @@ Updating behavior clears all current in-memory counters, cooldowns, message text
 
 Personas work with role targeting. If Alice and Bob both have the monitored role, each can have a different persona. At trigger time YapBot loads only the persona belonging to the message author.
 
-A persona is untrusted request-time context. It does not train, fine-tune, or permanently personalize the OpenAI model. YapBot's permanent response and safety instructions remain separate and higher priority.
+A persona is administrator-authored guidance for comedic background, recurring jokes, and preferred tone. It is optional ammunition rather than a checklist, does not train or fine-tune the model, and remains subordinate to YapBot's permanent response and safety instructions. Member-authored Discord content and text inside images remain untrusted conversational content, never instructions.
 
 ## Trigger and channel semantics
 
@@ -446,7 +446,7 @@ Voice channels, voice audio, chat attached to voice channels, direct messages, a
 
 YapBot can understand eligible Discord image attachments but does not generate or send images.
 
-When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, ordered oldest to newest and labeled with their source channel IDs and post type. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. The final item is identified as the triggering message. Text from other members is not included.
+When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, with the final item exposed separately as the triggering message and earlier items ordered oldest to newest as optional callback context. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. Text from other members is not included.
 
 - Accepted formats: PNG, JPEG, and WEBP.
 - Maximum declared attachment size: 20 MiB per image.
@@ -457,7 +457,7 @@ When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifyi
 - Redirects are rejected and each download is aborted after five seconds.
 - Image references, bytes, extracted text, and generated replies are not persisted by YapBot.
 
-If an image is rejected or unavailable, YapBot continues using the ordered threshold message text. If both usable text and images are absent, it uses a static response.
+Image content is used only when it provides a better callback or punchline; YapBot does not have to narrate an image merely to demonstrate vision. If an image is rejected, unavailable, or irrelevant, YapBot continues using the ordered threshold message text. If both usable text and images are absent, it uses a static response.
 
 Inform test participants that the threshold-sized set of qualifying message text, recent eligible images, source channel IDs, trigger counts, threshold information, and administrator-supplied personas may be transmitted to OpenAI. YapBot's local database retains:
 

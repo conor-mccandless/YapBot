@@ -18,6 +18,8 @@ import {
 import { RecentMessageContextStore } from "./message-context.js";
 import {
   createOpenAITextRequest,
+  selectOpenAIModel,
+  YAPBOT_PROMPT_VERSION,
   YapResponseGenerator,
 } from "./response-generator.js";
 import { matchesConfiguredTarget } from "./targeting.js";
@@ -248,6 +250,7 @@ export async function startWorker(
           }
         }
 
+        const generationStartedAt = Date.now();
         const generated = await responseGenerator.generate(
           message.content,
           allowOpenAI,
@@ -259,6 +262,30 @@ export async function startWorker(
             windowSeconds: config.windowSeconds,
           },
           recentMessages,
+        );
+        logger.info(
+          {
+            generationLatencyMs: Date.now() - generationStartedAt,
+            imageCount: imageDataUrls.length,
+            model: responseGenerator.openAIConfigured
+              ? selectOpenAIModel(
+                  {
+                    imageDataUrls,
+                    messageContent: message.content,
+                  },
+                  environment.OPENAI_MODEL,
+                  environment.OPENAI_IMAGE_MODEL,
+                )
+              : null,
+            outputWordCount: generated.content.split(/\s+/).filter(Boolean)
+              .length,
+            personaPresent: Boolean(personaDescription?.trim()),
+            priorMessageCount: Math.max(recentMessages.length - 1, 0),
+            promptVersion: YAPBOT_PROMPT_VERSION,
+            reasoningEffort: environment.OPENAI_REASONING_EFFORT,
+            source: generated.source,
+          },
+          "Generated YapBot response",
         );
         outcome =
           generated.source === "openai" ? "openai_response" : "static_response";
