@@ -7,6 +7,7 @@ import {
   downloadDiscordImages,
   isAllowedDiscordImageUrl,
   MAX_IMAGE_BYTES,
+  normalizeDiscordImageLinks,
   RecentImageContextStore,
 } from "../src/image-context.js";
 
@@ -74,6 +75,19 @@ describe("Discord image validation", () => {
         url: `${image.url}?signed=true`,
       },
     ]);
+  });
+
+  it("replaces recognized Discord image links without hiding other URLs", () => {
+    expect(
+      normalizeDiscordImageLinks(
+        `look ${image.url}?signed=true, then https://example.com/page`,
+      ),
+    ).toBe("look [image supplied separately], then https://example.com/page");
+    expect(
+      normalizeDiscordImageLinks(
+        "https://cdn.discordapp.com/attachments/123/456/animation.gif",
+      ),
+    ).toBe("https://cdn.discordapp.com/attachments/123/456/animation.gif");
   });
 });
 

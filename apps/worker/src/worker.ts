@@ -13,6 +13,7 @@ import { handleYapCommand } from "./commands.js";
 import {
   collectDiscordMessageImages,
   downloadDiscordImages,
+  normalizeDiscordImageLinks,
   RecentImageContextStore,
 } from "./image-context.js";
 import {
@@ -183,10 +184,6 @@ export async function startWorker(
         userId: message.author.id,
         windowSeconds: config.windowSeconds,
       });
-      const normalizedMessageContent = normalizeYapBotMention(
-        message.content,
-        client.user?.id,
-      );
       const messageImages = collectDiscordMessageImages({
         attachments: [...message.attachments.values()],
         content: message.content,
@@ -196,6 +193,9 @@ export async function startWorker(
           ),
         ),
       });
+      const normalizedMessageContent = normalizeDiscordImageLinks(
+        normalizeYapBotMention(message.content, client.user?.id),
+      );
       const directlyMentionsBot =
         (client.user ? message.mentions.users.has(client.user.id) : false) ||
         directlyAddressesYapBot(normalizedMessageContent);
@@ -266,6 +266,7 @@ export async function startWorker(
         const responseDecision = selectResponseDecision(
           recentMessages,
           Boolean(personaDescription?.trim()),
+          images,
         );
 
         let allowOpenAI = false;
@@ -306,6 +307,7 @@ export async function startWorker(
               0,
             ),
             directAddressSequence: responseDecision.directAddressSequence,
+            primaryMessageSequence: responseDecision.primaryMessageSequence,
             imageDownloadFailureCount:
               conversationImageReferences.length - images.length,
             imageCount: images.length,

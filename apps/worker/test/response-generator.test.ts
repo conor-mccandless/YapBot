@@ -343,6 +343,106 @@ describe("response decision tree and prompt context", () => {
     });
   });
 
+  it("routes a supplied image ahead of a threshold roast", () => {
+    const messages = [
+      message(
+        1,
+        "look https://cdn.discordapp.com/attachments/123/456/dog.png",
+        { eligibleImageAttachmentCount: 1 },
+      ),
+      message(2, "absolutely"),
+      message(3, "locked in"),
+    ];
+    const input = buildOpenAIInput({
+      images: [image("message-1")],
+      messageContent: "locked in",
+      messageContext: messages,
+    });
+    const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      conversationWindow: Array<{ content: string | null }>;
+      personaProfile: string | null;
+      responseDecision: {
+        mode: string;
+        primaryMessageSequence: number;
+        rationaleFlavor: string;
+      };
+    };
+
+    expect(
+      selectResponseDecision(messages, false, [image("message-1")]),
+    ).toEqual({
+      directAddressSequence: null,
+      mode: "visual_post",
+      primaryMessageSequence: 1,
+      rationaleFlavor: "generic",
+    });
+    expect(
+      selectResponseDecision(messages, true, [image("message-1")]),
+    ).toEqual(
+      expect.objectContaining({
+        mode: "visual_post",
+        rationaleFlavor: "persona_callback",
+      }),
+    );
+    expect(json.responseDecision).toMatchObject({
+      mode: "visual_post",
+      primaryMessageSequence: 1,
+      rationaleFlavor: "generic",
+    });
+    expect(json.personaProfile).toBeNull();
+    expect(json.conversationWindow[0]?.content).toBe(
+      "look [image supplied separately]",
+    );
+    expect(input).not.toContain("cdn.discordapp.com");
+    expect(input).toContain("one concrete detail visibly present");
+    expect(input).toContain("Do not call the supplied content a link");
+  });
+
+  it("keeps direct address above visual post and preserves persona flavor", () => {
+    const messages = [
+      message(1, "look", { eligibleImageAttachmentCount: 1 }),
+      message(2, "@YapBot you seeing this?", {
+        directlyMentionsBot: true,
+      }),
+      message(3, "well?"),
+    ];
+
+    expect(
+      selectResponseDecision(messages, true, [image("message-1")]),
+    ).toEqual({
+      directAddressSequence: 2,
+      mode: "direct_address",
+      primaryMessageSequence: 2,
+      rationaleFlavor: "persona_callback",
+    });
+  });
+
+  it("uses a generic rationale without inventing a missing persona", () => {
+    const input = buildOpenAIInput({
+      messageContent: "I found it",
+      messageContext: [
+        message(1, "wait"),
+        message(2, "hold on"),
+        message(3, "I found it"),
+      ],
+    });
+    const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      personaProfile: string | null;
+      responseDecision: { mode: string; rationaleFlavor: string };
+    };
+
+    expect(json.personaProfile).toBeNull();
+    expect(json.responseDecision).toEqual(
+      expect.objectContaining({
+        mode: "threshold_roast",
+        rationaleFlavor: "generic",
+      }),
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "never invent personal history or persona details",
+    );
+  });
+
   it("maps each image to its source message and direct image question", () => {
     const input = buildOpenAIInput({
       images: [image("message-1")],
@@ -394,7 +494,7 @@ describe("response decision tree and prompt context", () => {
     expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
 
-  it("defines the v4 two-sentence friend-tone output contract", () => {
+  it("defines the v6 two-sentence friend-tone output contract", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain("exactly two short sentences");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "rapid sequence of posts triggered YapBot",
@@ -410,7 +510,7 @@ describe("response decision tree and prompt context", () => {
       "sentence two must use exactly one recognizable persona theme",
     );
     expect(YAPBOT_INSTRUCTIONS).toContain("kernel panic");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v5");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v6");
   });
 });
 

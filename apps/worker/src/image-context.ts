@@ -7,6 +7,8 @@ const SUPPORTED_IMAGE_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const DISCORD_IMAGE_URL_PATTERN =
+  /https:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\/[^\s<>]+/giu;
 
 export const MAX_IMAGE_COUNT = 3;
 export const MAX_IMAGE_BYTES = 20 * 1_024 * 1_024;
@@ -79,11 +81,7 @@ export function collectDiscordMessageImages(
     ...input.embedImageUrls
       .map((url) => createDiscordImageReferenceFromUrl(url))
       .filter((image) => image !== undefined),
-    ...(
-      input.content.match(
-        /https:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net)\/attachments\/[^\s<>]+/giu,
-      ) ?? []
-    )
+    ...(input.content.match(DISCORD_IMAGE_URL_PATTERN) ?? [])
       .map((url) => url.replace(/[),.!?]+$/u, ""))
       .map((url) => createDiscordImageReferenceFromUrl(url))
       .filter((image) => image !== undefined),
@@ -97,6 +95,17 @@ export function collectDiscordMessageImages(
   }
 
   return [...uniqueReferences.values()];
+}
+
+export function normalizeDiscordImageLinks(content: string): string {
+  return content.replace(DISCORD_IMAGE_URL_PATTERN, (matchedUrl) => {
+    const normalizedUrl = matchedUrl.replace(/[),.!?]+$/u, "");
+    if (!createDiscordImageReferenceFromUrl(normalizedUrl)) {
+      return matchedUrl;
+    }
+
+    return `[image supplied separately]${matchedUrl.slice(normalizedUrl.length)}`;
+  });
 }
 
 export function createDiscordImageReferenceFromUrl(

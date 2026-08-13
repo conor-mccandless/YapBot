@@ -35,6 +35,18 @@ export const YAPBOT_STYLE_EXAMPLES = [
     'Good: "That light snack has its own municipal boundaries. Three-part food coverage woke me up, so plate the next update in one message."',
     "Bad: Merely inventorying the image or dragging an unrelated persona detail into it.",
   ],
+  [
+    "Visual-post override without a direct address",
+    'Window: a Discord image link rendering a dog wearing sunglasses / "look at this" / "absolutely locked in"',
+    'Good: "Those sunglasses have that dog ready to deny every allegation. Your rapid gallery tour woke me up, so put the next exhibit in one post."',
+    "Bad: Joking about how the content was delivered instead of the visible dog.",
+  ],
+  [
+    "No persona available",
+    'Persona: none / Window: "wait" / "hold on" / "I found it"',
+    'Good: "Three suspense trailers for one discovery is elite pacing. That rapid rollout summoned me, so bundle the next plot twist into one post."',
+    "Bad: Inventing personal history, recurring habits, a job, or a hobby that was not supplied.",
+  ],
 ]
   .map((example) => example.join("\n"))
   .join("\n\n");
