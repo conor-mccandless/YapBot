@@ -18,6 +18,7 @@ describe("selectStaticResponse", () => {
     for (const response of STATIC_RESPONSES) {
       expect(response.match(/[.!?]+(?=\s|$)/g)).toHaveLength(2);
       expect(response.split(/\s+/).length).toBeLessThanOrEqual(45);
+      expect(response).toMatch(/\byap(?:ping|s)?\b/iu);
     }
   });
 });

@@ -15,7 +15,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
 - Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
-- One compact two-sentence reply of no more than 45 words: a grounded answer or roast followed by an in-character explanation that the rapid posting triggered YapBot and the member should slow down or consolidate.
+- One compact two-sentence reply of no more than 45 words: a grounded answer or roast followed by an in-character explanation that the rapid posting triggered YapBot and the member should ease up on the yapping or consolidate.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
