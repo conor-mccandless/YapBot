@@ -7,6 +7,7 @@ import {
   sanitizeGeneratedResponse,
   selectOpenAIModel,
   selectResponseDecision,
+  validateGeneratedResponse,
   YAPBOT_INSTRUCTIONS,
   YAPBOT_PROMPT_VERSION,
   YapResponseGenerator,
@@ -260,6 +261,74 @@ describe("YapResponseGenerator", () => {
     });
   });
 
+  it("performs one focused correction retry for a mode-aware failure", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        completed(
+          "That mystery link is certainly mysterious. Your rapid gallery summoned me, so consolidate the next exhibit.",
+        ),
+      )
+      .mockResolvedValueOnce(
+        completed(
+          "That dog is wearing sunglasses like the allegations just arrived. Your rapid gallery summoned me, so consolidate the next exhibit.",
+        ),
+      );
+    const generator = new YapResponseGenerator(request, () => "fallback");
+    const images = [image("message-1")];
+    const messageContext = [
+      message(1, "look at this", { eligibleImageAttachmentCount: 1 }),
+      message(2, "absolutely"),
+      message(3, "locked in"),
+    ];
+
+    await expect(
+      generator.generate(
+        "locked in",
+        true,
+        undefined,
+        images,
+        undefined,
+        messageContext,
+      ),
+    ).resolves.toEqual({
+      content:
+        "That dog is wearing sunglasses like the allegations just arrived. Your rapid gallery summoned me, so consolidate the next exhibit.",
+      openAIMetadata: {
+        attemptCount: 2,
+        correctionReasons: ["visual_delivery_reference"],
+        status: "completed",
+      },
+      source: "openai",
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[1]?.[0]).toMatchObject({
+      correction: { failedChecks: ["visual_delivery_reference"] },
+    });
+    expect(buildOpenAIInput(request.mock.calls[1]?.[0])).toContain(
+      "CORRECTION RETRY",
+    );
+  });
+
+  it("stops after one correction and fails closed if it remains invalid", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(
+        completed(
+          "That mystery link remains mysterious. Your rapid gallery summoned me, so consolidate the next exhibit.",
+        ),
+      );
+    const generator = new YapResponseGenerator(request, () => "fallback");
+
+    await expect(
+      generator.generate("look", true, undefined, [image("message-1")]),
+    ).resolves.toMatchObject({
+      fallbackReason: "invalid_output_contract",
+      source: "static",
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
   it("passes source-aware image input through to OpenAI", async () => {
     const request = vi
       .fn()
@@ -295,6 +364,7 @@ describe("response decision tree and prompt context", () => {
       mode: "direct_address",
       primaryMessageSequence: 2,
       rationaleFlavor: "generic",
+      visualAvailability: "none",
     });
 
     const input = buildOpenAIInput({
@@ -320,6 +390,7 @@ describe("response decision tree and prompt context", () => {
       mode: "direct_address",
       primaryMessageSequence: 2,
       rationaleFlavor: "generic",
+      visualAvailability: "none",
     });
     expect(json.conversationWindow[1]).toMatchObject({
       directlyAddressesYapBot: true,
@@ -340,6 +411,7 @@ describe("response decision tree and prompt context", () => {
       mode: "threshold_roast",
       primaryMessageSequence: 3,
       rationaleFlavor: "generic",
+      visualAvailability: "none",
     });
   });
 
@@ -375,6 +447,7 @@ describe("response decision tree and prompt context", () => {
       mode: "visual_post",
       primaryMessageSequence: 1,
       rationaleFlavor: "generic",
+      visualAvailability: "available",
     });
     expect(
       selectResponseDecision(messages, true, [image("message-1")]),
@@ -414,6 +487,7 @@ describe("response decision tree and prompt context", () => {
       mode: "direct_address",
       primaryMessageSequence: 2,
       rationaleFlavor: "persona_callback",
+      visualAvailability: "available",
     });
   });
 
@@ -441,6 +515,32 @@ describe("response decision tree and prompt context", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "never invent personal history or persona details",
     );
+  });
+
+  it("marks a declared but failed image as unavailable without selecting visual mode", () => {
+    const input = buildOpenAIInput({
+      messageContent: "well?",
+      messageContext: [
+        message(1, "[image supplied separately]", {
+          eligibleImageAttachmentCount: 1,
+        }),
+        message(2, "look at it"),
+        message(3, "well?"),
+      ],
+    });
+    const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      responseDecision: {
+        mode: string;
+        visualAvailability: string;
+      };
+    };
+
+    expect(json.responseDecision).toMatchObject({
+      mode: "threshold_roast",
+      visualAvailability: "declared_but_unavailable",
+    });
+    expect(input).toContain("declared visual was unavailable");
+    expect(input).toContain("do not claim to see it");
   });
 
   it("maps each image to its source message and direct image question", () => {
@@ -494,7 +594,7 @@ describe("response decision tree and prompt context", () => {
     expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
 
-  it("defines the v6 two-sentence friend-tone output contract", () => {
+  it("defines the v7 two-sentence friend-tone output contract", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain("exactly two short sentences");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "rapid sequence of posts triggered YapBot",
@@ -510,7 +610,7 @@ describe("response decision tree and prompt context", () => {
       "sentence two must use exactly one recognizable persona theme",
     );
     expect(YAPBOT_INSTRUCTIONS).toContain("kernel panic");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v6");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v7");
   });
 });
 
@@ -577,6 +677,45 @@ describe("buildOpenAIContent", () => {
 });
 
 describe("generated response validation", () => {
+  it("checks slowdown direction and invented biography only when detectable", () => {
+    expect(
+      validateGeneratedResponse(
+        "Three posts for one thought is premium serialization. Keep doing exactly that forever.",
+        { messageContent: "hello" },
+      ),
+    ).toContain("missing_slowdown_direction");
+    expect(
+      validateGeneratedResponse(
+        "Your boss must love these updates. That posting sprint woke me up, so combine the next thought.",
+        { messageContent: "hello" },
+      ),
+    ).toContain("invented_persona_claim");
+    expect(
+      validateGeneratedResponse(
+        "Your boss must love these updates. That posting sprint woke me up, so combine the next thought.",
+        { messageContent: "hello", persona: "Recurring boss jokes." },
+      ),
+    ).not.toContain("invented_persona_claim");
+    expect(
+      validateGeneratedResponse(
+        "Your boss is really getting the live feed today. That posting sprint woke me up, so combine the next thought.",
+        { messageContent: "My boss just said this is fine." },
+      ),
+    ).not.toContain("invented_persona_claim");
+  });
+
+  it("allows delivery wording when the member explicitly asks about a URL", () => {
+    expect(
+      validateGeneratedResponse(
+        "That URL points to a dog dressed for court. Your rapid gallery summoned me, so consolidate the next exhibit.",
+        {
+          images: [image("message-1")],
+          messageContent: "@YapBot what is this URL?",
+        },
+      ),
+    ).not.toContain("visual_delivery_reference");
+  });
+
   it("normalizes whitespace and neutralizes Discord mentions", () => {
     expect(
       sanitizeGeneratedResponse(

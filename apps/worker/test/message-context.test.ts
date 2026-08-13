@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   directlyAddressesYapBot,
+  directlyRepliesToYapBot,
   normalizeYapBotMention,
   RecentMessageContextStore,
 } from "../src/message-context.js";
@@ -23,6 +24,43 @@ describe("normalizeYapBotMention", () => {
     expect(directlyAddressesYapBot("a screenshot containing YapBot text")).toBe(
       false,
     );
+  });
+});
+
+describe("directlyRepliesToYapBot", () => {
+  it("recognizes a default Discord reply whose referenced author is YapBot", async () => {
+    const fetchReference = vi.fn().mockResolvedValue({
+      author: { id: "bot-1" },
+    });
+
+    await expect(
+      directlyRepliesToYapBot(
+        {
+          fetchReference,
+          reference: { messageId: "message-1", type: 0 },
+        },
+        "bot-1",
+      ),
+    ).resolves.toBe(true);
+    expect(fetchReference).toHaveBeenCalledOnce();
+  });
+
+  it("does not fetch non-replies and safely ignores unavailable references", async () => {
+    const fetchReference = vi.fn().mockRejectedValue(new Error("not found"));
+
+    await expect(
+      directlyRepliesToYapBot(
+        { fetchReference, reference: { messageId: "message-1", type: 0 } },
+        "bot-1",
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      directlyRepliesToYapBot(
+        { fetchReference, reference: { messageId: "message-2", type: 1 } },
+        "bot-1",
+      ),
+    ).resolves.toBe(false);
+    expect(fetchReference).toHaveBeenCalledOnce();
   });
 });
 

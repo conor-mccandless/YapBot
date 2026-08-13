@@ -124,6 +124,31 @@ export function directlyAddressesYapBot(content: string): boolean {
   return /(?:^|\s)@YapBot\b/iu.test(content);
 }
 
+export async function directlyRepliesToYapBot(
+  message: {
+    fetchReference(): Promise<{ author: { id: string } }>;
+    reference: {
+      messageId: string | undefined;
+      type: number;
+    } | null;
+  },
+  botUserId?: string,
+): Promise<boolean> {
+  if (
+    !botUserId ||
+    !message.reference?.messageId ||
+    message.reference.type !== 0
+  ) {
+    return false;
+  }
+
+  try {
+    return (await message.fetchReference()).author.id === botUserId;
+  } catch {
+    return false;
+  }
+}
+
 function memberKey(guildId: string, userId: string): string {
   return `${guildId}:${userId}`;
 }

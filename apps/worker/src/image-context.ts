@@ -2,6 +2,11 @@ const DISCORD_IMAGE_HOSTS = new Set([
   "cdn.discordapp.com",
   "media.discordapp.net",
 ]);
+const DISCORD_IMAGE_PROXY_HOSTS = new Set([
+  "images-ext-1.discordapp.net",
+  "images-ext-2.discordapp.net",
+  "media.discordapp.net",
+]);
 const SUPPORTED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -128,8 +133,10 @@ export function isAllowedDiscordImageUrl(value: string): boolean {
     const url = new URL(value);
     return (
       url.protocol === "https:" &&
-      DISCORD_IMAGE_HOSTS.has(url.hostname) &&
-      url.pathname.startsWith("/attachments/") &&
+      ((DISCORD_IMAGE_HOSTS.has(url.hostname) &&
+        url.pathname.startsWith("/attachments/")) ||
+        (DISCORD_IMAGE_PROXY_HOSTS.has(url.hostname) &&
+          url.pathname.startsWith("/external/"))) &&
       url.username === "" &&
       url.password === ""
     );
@@ -299,7 +306,8 @@ export async function downloadDiscordImages(
 }
 
 function inferImageContentType(value: string): string | undefined {
-  const pathname = new URL(value).pathname.toLowerCase();
+  const url = new URL(value);
+  const pathname = url.pathname.toLowerCase();
   if (pathname.endsWith(".png")) {
     return "image/png";
   }
@@ -307,6 +315,17 @@ function inferImageContentType(value: string): string | undefined {
     return "image/jpeg";
   }
   if (pathname.endsWith(".webp")) {
+    return "image/webp";
+  }
+
+  const proxyFormat = url.searchParams.get("format")?.toLowerCase();
+  if (proxyFormat === "png") {
+    return "image/png";
+  }
+  if (proxyFormat === "jpg" || proxyFormat === "jpeg") {
+    return "image/jpeg";
+  }
+  if (proxyFormat === "webp") {
     return "image/webp";
   }
 

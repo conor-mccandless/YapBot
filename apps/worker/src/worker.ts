@@ -18,6 +18,7 @@ import {
 } from "./image-context.js";
 import {
   directlyAddressesYapBot,
+  directlyRepliesToYapBot,
   normalizeYapBotMention,
   RecentMessageContextStore,
 } from "./message-context.js";
@@ -188,17 +189,23 @@ export async function startWorker(
         attachments: [...message.attachments.values()],
         content: message.content,
         embedImageUrls: message.embeds.flatMap((embed) =>
-          [embed.image?.url, embed.thumbnail?.url].filter(
-            (url): url is string => url !== undefined,
-          ),
+          [
+            embed.image?.proxyURL,
+            embed.thumbnail?.proxyURL,
+            embed.image?.url,
+            embed.thumbnail?.url,
+          ].filter((url): url is string => url !== undefined),
         ),
       });
       const normalizedMessageContent = normalizeDiscordImageLinks(
         normalizeYapBotMention(message.content, client.user?.id),
       );
-      const directlyMentionsBot =
+      const explicitlyAddressesBot =
         (client.user ? message.mentions.users.has(client.user.id) : false) ||
         directlyAddressesYapBot(normalizedMessageContent);
+      const directlyMentionsBot =
+        explicitlyAddressesBot ||
+        (await directlyRepliesToYapBot(message, client.user?.id));
       if (responseGenerator.openAIConfigured) {
         messageContextStore.record({
           channelId: message.channelId,
@@ -323,6 +330,11 @@ export async function startWorker(
                 )
               : null,
             maxOutputTokens: environment.OPENAI_MAX_OUTPUT_TOKENS,
+            openAIAttemptCount:
+              generated.openAIMetadata?.attemptCount ??
+              (generated.openAIMetadata ? 1 : null),
+            openAICorrectionReasons:
+              generated.openAIMetadata?.correctionReasons ?? [],
             openAIIncompleteReason:
               generated.openAIMetadata?.incompleteReason ?? null,
             openAIInputTokens:
@@ -340,6 +352,7 @@ export async function startWorker(
             promptVersion: YAPBOT_PROMPT_VERSION,
             responseMode: responseDecision.mode,
             responseRationaleFlavor: responseDecision.rationaleFlavor,
+            responseVisualAvailability: responseDecision.visualAvailability,
             reasoningEffort: environment.OPENAI_REASONING_EFFORT,
             source: generated.source,
           },

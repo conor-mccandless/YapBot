@@ -51,6 +51,32 @@ describe("Discord image validation", () => {
     ).toBeUndefined();
   });
 
+  it("accepts image URLs served through Discord's external media proxy", () => {
+    const proxyUrl =
+      "https://images-ext-1.discordapp.net/external/hash/https/example.com/photo.webp?format=webp";
+
+    expect(createDiscordImageReferenceFromUrl(proxyUrl)).toEqual({
+      contentType: "image/webp",
+      size: null,
+      url: proxyUrl,
+    });
+    expect(isAllowedDiscordImageUrl(proxyUrl)).toBe(true);
+    expect(
+      createDiscordImageReferenceFromUrl(
+        "https://media.discordapp.net/external/hash/https/example.com/photo?format=webp",
+      ),
+    ).toEqual({
+      contentType: "image/webp",
+      size: null,
+      url: "https://media.discordapp.net/external/hash/https/example.com/photo?format=webp",
+    });
+    expect(
+      isAllowedDiscordImageUrl(
+        "https://images-ext-1.discordapp.net/attachments/123/photo.webp",
+      ),
+    ).toBe(false);
+  });
+
   it("collects and deduplicates attachments, embeds, and pasted CDN links", () => {
     expect(
       collectDiscordMessageImages({
