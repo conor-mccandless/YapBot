@@ -9,8 +9,8 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 ]);
 
 export const MAX_IMAGE_COUNT = 3;
-export const MAX_IMAGE_BYTES = 12 * 1_024 * 1_024;
-export const MAX_TOTAL_IMAGE_BYTES = 30 * 1_024 * 1_024;
+export const MAX_IMAGE_BYTES = 20 * 1_024 * 1_024;
+export const MAX_TOTAL_IMAGE_BYTES = 50 * 1_024 * 1_024;
 export const IMAGE_DOWNLOAD_TIMEOUT_MS = 5_000;
 const MAX_STORED_IMAGE_REFERENCES_PER_MEMBER = 12;
 

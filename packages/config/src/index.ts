@@ -51,12 +51,12 @@ export const environmentSchema = z.object({
     .int()
     .min(32)
     .max(1_000)
-    .default(400),
+    .default(800),
   OPENAI_IMAGE_MODEL: optionalSecretSchema,
   OPENAI_MODEL: z.string().min(1).default("gpt-5.6-luna"),
   OPENAI_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh", "max"])
-    .default("low"),
+    .default("medium"),
   OPENAI_TIMEOUT_MS: z.coerce
     .number()
     .int()

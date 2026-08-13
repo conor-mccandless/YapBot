@@ -141,9 +141,9 @@ ALLOWED_GUILD_IDS=replace-with-test-server-id
 OPENAI_API_KEY=replace-with-openai-project-api-key
 OPENAI_MODEL=gpt-5.6-luna
 OPENAI_IMAGE_MODEL=
-OPENAI_REASONING_EFFORT=low
+OPENAI_REASONING_EFFORT=medium
 OPENAI_DAILY_GUILD_LIMIT=100
-OPENAI_MAX_OUTPUT_TOKENS=400
+OPENAI_MAX_OUTPUT_TOKENS=800
 OPENAI_TIMEOUT_MS=10000
 
 DATABASE_URL=postgresql://yapbot:yapbot_dev@localhost:5432/yapbot
@@ -161,9 +161,9 @@ NODE_ENV=development
 | `OPENAI_API_KEY`           | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                          |
 | `OPENAI_MODEL`             | With OpenAI | Model for text-only and, by default, image-bearing requests.                                                   |
 | `OPENAI_IMAGE_MODEL`       | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                             |
-| `OPENAI_REASONING_EFFORT`  | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `low`.                                          |
+| `OPENAI_REASONING_EFFORT`  | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `medium`.                                       |
 | `OPENAI_DAILY_GUILD_LIMIT` | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.                    |
-| `OPENAI_MAX_OUTPUT_TOKENS` | No          | Provider output budget from 32-1,000; default is 400. YapBot separately truncates visible replies to 75 words. |
+| `OPENAI_MAX_OUTPUT_TOKENS` | No          | Provider output budget from 32-1,000; default is 800. YapBot separately truncates visible replies to 75 words. |
 | `OPENAI_TIMEOUT_MS`        | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                               |
 | `DATABASE_URL`             | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                             |
 | `LOG_LEVEL`                | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                                      |
@@ -449,8 +449,8 @@ YapBot can understand eligible Discord image attachments but does not generate o
 When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, ordered oldest to newest and labeled with their source channel IDs and post type. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. The final item is identified as the triggering message. Text from other members is not included.
 
 - Accepted formats: PNG, JPEG, and WEBP.
-- Maximum declared attachment size: 12 MiB per image.
-- Maximum downloaded image payload: 30 MiB per generation.
+- Maximum declared attachment size: 20 MiB per image.
+- Maximum downloaded image payload: 50 MiB per generation.
 - Maximum recent references kept in memory per user: 12.
 - Maximum images submitted for one generation: the latest 3 within the rolling window.
 - Source restriction: HTTPS Discord attachment CDN URLs.
@@ -585,7 +585,7 @@ Channel-specific permission overrides can deny a permission even when the server
 
 ### Images are ignored
 
-- Use a PNG, JPEG, or WEBP attachment no larger than 12 MiB.
+- Use a PNG, JPEG, or WEBP attachment no larger than 20 MiB.
 - Confirm Message Content Intent is enabled.
 - Confirm the attachment is hosted by Discord and remains available when the threshold triggers.
 - GIFs are intentionally excluded.
