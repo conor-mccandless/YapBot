@@ -78,16 +78,19 @@ describe("YapResponseGenerator", () => {
       {
         channelId: "channel-1",
         content: "First important update.",
+        createdAtMs: 1_000,
         eligibleImageAttachmentCount: 0,
       },
       {
         channelId: "channel-2",
         content: "A related development.",
+        createdAtMs: 2_500,
         eligibleImageAttachmentCount: 0,
       },
       {
         channelId: "channel-1",
         content: "Final confirmation.",
+        createdAtMs: 3_000,
         eligibleImageAttachmentCount: 0,
       },
     ];
@@ -99,9 +102,11 @@ describe("YapResponseGenerator", () => {
       [],
       undefined,
       messageContext,
+      true,
     );
 
     expect(request).toHaveBeenCalledWith({
+      latestMessageDirectlyMentionsBot: true,
       messageContent: "Final confirmation.",
       messageContext,
     });
@@ -267,18 +272,21 @@ describe("YapResponseGenerator", () => {
 });
 
 describe("buildOpenAIInput", () => {
-  it("separates the triggering message from optional prior context", () => {
+  it("represents the ordered conversation window without making the trigger primary", () => {
     const input = buildOpenAIInput({
+      latestMessageDirectlyMentionsBot: true,
       messageContent: "I know everything about archives.",
       messageContext: [
         {
           channelId: "channel-1",
           content: "The archive opens at nine.",
+          createdAtMs: 1_000,
           eligibleImageAttachmentCount: 0,
         },
         {
           channelId: "channel-2",
           content: "I know everything about archives.",
+          createdAtMs: 2_500,
           eligibleImageAttachmentCount: 0,
         },
       ],
@@ -296,20 +304,38 @@ describe("buildOpenAIInput", () => {
     expect(input).toContain("The archive opens at nine.");
     expect(input).toContain("I know everything about archives.");
     const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      conversationWindow: Array<{
+        content: string;
+        millisecondsSincePreviousMessage: number | null;
+        sequence: number;
+      }>;
+      latestMessageDirectlyMentionsBot: boolean;
       personaProfile: string;
-      priorMessages: Array<{ content: string }>;
-      triggeringMessage: { content: string };
+      trigger: { rollingMessageCount: number };
+      triggeringMessageSequence: number;
     };
-    expect(json.triggeringMessage.content).toBe(
-      "I know everything about archives.",
-    );
-    expect(json.priorMessages).toHaveLength(1);
-    expect(json.priorMessages[0]?.content).toBe("The archive opens at nine.");
+    expect(json.conversationWindow).toHaveLength(2);
+    expect(json.conversationWindow[0]).toMatchObject({
+      content: "The archive opens at nine.",
+      millisecondsSincePreviousMessage: null,
+      sequence: 1,
+    });
+    expect(json.conversationWindow[1]).toMatchObject({
+      content: "I know everything about archives.",
+      millisecondsSincePreviousMessage: 1_500,
+      sequence: 2,
+    });
+    expect(json.triggeringMessageSequence).toBe(2);
+    expect(json.latestMessageDirectlyMentionsBot).toBe(true);
     expect(json.personaProfile).toContain("works at a library");
-    expect(input).toContain(
-      '"trigger":{"messageCount":3,"threshold":3,"windowSeconds":30}',
-    );
+    expect(json.trigger.rollingMessageCount).toBe(3);
     expect(YAPBOT_INSTRUCTIONS).toContain("Choose ONE primary comedic angle");
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "final message caused the threshold to fire, but it is not automatically",
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "Several short posts are not an essay",
+    );
     expect(YAPBOT_INSTRUCTIONS).toContain("Usually write 8 to 28 words");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "Responses under 8 words are allowed",
@@ -322,7 +348,11 @@ describe("buildOpenAIInput", () => {
     );
     expect(YAPBOT_INSTRUCTIONS).not.toContain("original metaphor");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("18 to 75 words");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v2");
+    expect(YAPBOT_INSTRUCTIONS).not.toContain(
+      "triggering message is the primary conversational target",
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain("three-message stand-up. Incredible");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v3");
   });
 
   it("labels an image-only triggering post without requiring image narration", () => {
@@ -338,22 +368,26 @@ describe("buildOpenAIInput", () => {
       ],
     });
     const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
-      priorMessages: unknown[];
-      triggeringMessage: {
+      conversationWindow: Array<{
         content: string | null;
         eligibleImageAttachmentCount: number;
+        millisecondsSincePreviousMessage: number | null;
         postType: string;
-      };
+      }>;
+      triggeringMessageSequence: number;
     };
 
-    expect(json.triggeringMessage).toEqual({
-      channelId: "channel-1",
-      content: null,
-      eligibleImageAttachmentCount: 1,
-      postType: "image_only",
-      sequence: 1,
-    });
-    expect(json.priorMessages).toEqual([]);
+    expect(json.conversationWindow).toEqual([
+      {
+        channelId: "channel-1",
+        content: null,
+        eligibleImageAttachmentCount: 1,
+        millisecondsSincePreviousMessage: null,
+        postType: "image_only",
+        sequence: 1,
+      },
+    ]);
+    expect(json.triggeringMessageSequence).toBe(1);
     expect(input).toContain("use visible image content selectively");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "Never describe an image merely to prove you saw it",
@@ -366,10 +400,12 @@ describe("buildOpenAIInput", () => {
   it("keeps trigger context optional for backwards-compatible callers", () => {
     const input = buildOpenAIInput({ messageContent: "hello" });
     const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      latestMessageDirectlyMentionsBot: boolean;
       trigger: unknown;
     };
 
     expect(json.trigger).toBeNull();
+    expect(json.latestMessageDirectlyMentionsBot).toBe(false);
   });
 
   it("bounds persona and message content", () => {
@@ -378,12 +414,12 @@ describe("buildOpenAIInput", () => {
       persona: "p".repeat(2_100),
     });
     const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+      conversationWindow: Array<{ content: string }>;
       personaProfile: string;
-      triggeringMessage: { content: string };
     };
 
     expect(json.personaProfile).toHaveLength(2_000);
-    expect(json.triggeringMessage.content).toHaveLength(2_000);
+    expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
 });
 

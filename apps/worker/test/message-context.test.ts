@@ -29,16 +29,19 @@ describe("RecentMessageContextStore", () => {
       {
         channelId: "channel-2",
         content: "message 2",
+        createdAtMs: 1_000,
         eligibleImageAttachmentCount: 0,
       },
       {
         channelId: "channel-1",
         content: "message 3",
+        createdAtMs: 2_000,
         eligibleImageAttachmentCount: 0,
       },
       {
         channelId: "channel-2",
         content: "message 4",
+        createdAtMs: 3_000,
         eligibleImageAttachmentCount: 1,
       },
     ]);

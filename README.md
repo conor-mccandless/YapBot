@@ -446,7 +446,7 @@ Voice channels, voice audio, chat attached to voice channels, direct messages, a
 
 YapBot can understand eligible Discord image attachments but does not generate or send images.
 
-When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold, with the final item exposed separately as the triggering message and earlier items ordered oldest to newest as optional callback context. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. Text from other members is not included.
+When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text, relative timing, and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold as one chronological conversation window. The final item is identified as the event that crossed the threshold, but it is not automatically treated as the subject of the reply. When the final message explicitly mentions YapBot, the reply addresses it directly while retaining the earlier window as optional callback material. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. Text from other members is not included.
 
 - Accepted formats: PNG, JPEG, and WEBP.
 - Maximum declared attachment size: 20 MiB per image.
@@ -459,7 +459,7 @@ When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifyi
 
 Image content is used only when it provides a better callback or punchline; YapBot does not have to narrate an image merely to demonstrate vision. If an image is rejected, unavailable, or irrelevant, YapBot continues using the ordered threshold message text. If both usable text and images are absent, it uses a static response.
 
-Inform test participants that the threshold-sized set of qualifying message text, recent eligible images, source channel IDs, trigger counts, threshold information, and administrator-supplied personas may be transmitted to OpenAI. YapBot's local database retains:
+Inform test participants that the threshold-sized set of qualifying message text, relative timing between included messages, recent eligible images, source channel IDs, trigger counts, threshold information, and administrator-supplied personas may be transmitted to OpenAI. YapBot's local database retains:
 
 - Persona descriptions until an administrator clears them.
 - Trigger metadata for up to 30 days.

@@ -222,6 +222,9 @@ export async function startWorker(
         const imageDataUrls = responseGenerator.openAIConfigured
           ? await downloadDiscordImages(recentImages)
           : [];
+        const latestMessageDirectlyMentionsBot = client.user
+          ? message.mentions.users.has(client.user.id)
+          : false;
 
         let personaDescription: string | undefined;
         try {
@@ -262,11 +265,14 @@ export async function startWorker(
             windowSeconds: config.windowSeconds,
           },
           recentMessages,
+          latestMessageDirectlyMentionsBot,
         );
         logger.info(
           {
             generationLatencyMs: Date.now() - generationStartedAt,
+            conversationWindowMessageCount: recentMessages.length,
             imageCount: imageDataUrls.length,
+            latestMessageDirectlyMentionsBot,
             model: responseGenerator.openAIConfigured
               ? selectOpenAIModel(
                   {
@@ -292,7 +298,6 @@ export async function startWorker(
             outputWordCount: generated.content.split(/\s+/).filter(Boolean)
               .length,
             personaPresent: Boolean(personaDescription?.trim()),
-            priorMessageCount: Math.max(recentMessages.length - 1, 0),
             promptVersion: YAPBOT_PROMPT_VERSION,
             reasoningEffort: environment.OPENAI_REASONING_EFFORT,
             source: generated.source,
