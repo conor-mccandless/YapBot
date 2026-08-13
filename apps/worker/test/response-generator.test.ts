@@ -219,14 +219,14 @@ describe("buildOpenAIInput", () => {
   it("bounds persona and message content", () => {
     const input = buildOpenAIInput({
       messageContent: "m".repeat(2_100),
-      persona: "p".repeat(600),
+      persona: "p".repeat(2_100),
     });
     const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
       discordMessages: Array<{ content: string }>;
       personaBackground: string;
     };
 
-    expect(json.personaBackground).toHaveLength(500);
+    expect(json.personaBackground).toHaveLength(2_000);
     expect(json.discordMessages[0]?.content).toHaveLength(2_000);
   });
 });

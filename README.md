@@ -418,11 +418,11 @@ Updating behavior clears all current in-memory counters, cooldowns, message text
 
 ### Per-user personas
 
-| Command                                                      | Permission             | Behavior                                                                             |
-| ------------------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------ |
-| `/yap persona-set user:@user description:<1-500 characters>` | Owner or Manage Server | Creates or replaces one user's persona in this server. Bots cannot receive personas. |
-| `/yap persona-show user:@user`                               | Owner or Manage Server | Shows the stored persona for that user.                                              |
-| `/yap persona-clear user:@user`                              | Owner or Manage Server | Permanently removes that user's stored persona from this server.                     |
+| Command                                                        | Permission             | Behavior                                                                             |
+| -------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| `/yap persona-set user:@user description:<1-2,000 characters>` | Owner or Manage Server | Creates or replaces one user's persona in this server. Bots cannot receive personas. |
+| `/yap persona-show user:@user`                                 | Owner or Manage Server | Shows the stored persona for that user.                                              |
+| `/yap persona-clear user:@user`                                | Owner or Manage Server | Permanently removes that user's stored persona from this server.                     |
 
 Personas work with role targeting. If Alice and Bob both have the monitored role, each can have a different persona. At trigger time YapBot loads only the persona belonging to the message author.
 

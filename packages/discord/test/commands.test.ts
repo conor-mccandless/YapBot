@@ -23,4 +23,16 @@ describe("YAP_COMMAND_JSON", () => {
       expect(channelOption?.channel_types).toEqual([ChannelType.GuildText]);
     }
   });
+
+  it("allows persona descriptions up to 2,000 characters", () => {
+    const personaSet = YAP_COMMAND_JSON.options?.find(
+      (option) => option.name === "persona-set",
+    );
+    const description = personaSet?.options?.find(
+      (option) => option.name === "description",
+    );
+
+    expect(description?.min_length).toBe(1);
+    expect(description?.max_length).toBe(2_000);
+  });
 });

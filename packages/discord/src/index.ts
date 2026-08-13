@@ -127,9 +127,11 @@ export const YAP_COMMAND = new SlashCommandBuilder()
       .addStringOption((option) =>
         option
           .setName("description")
-          .setDescription("Background used as comedic context (500 characters)")
+          .setDescription(
+            "Background used as comedic context (2,000 characters)",
+          )
           .setMinLength(1)
-          .setMaxLength(500)
+          .setMaxLength(2_000)
           .setRequired(true),
       ),
   )

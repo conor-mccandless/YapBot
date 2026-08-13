@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { selectStaticResponse } from "./responses.js";
 
 const MAX_INPUT_CHARACTERS = 2_000;
-const MAX_PERSONA_CHARACTERS = 500;
+const MAX_PERSONA_CHARACTERS = 2_000;
 const MAX_RESPONSE_CHARACTERS = 500;
 
 export const YAPBOT_INSTRUCTIONS = [

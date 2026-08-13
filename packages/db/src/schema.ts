@@ -97,7 +97,7 @@ export const userPersona = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
-    description: varchar("description", { length: 500 }).notNull(),
+    description: varchar("description", { length: 2_000 }).notNull(),
     guildId: varchar("guild_id", { length: 20 }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

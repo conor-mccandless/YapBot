@@ -198,9 +198,9 @@ async function handlePersonaSet(
     await interaction.editReply("Choose a human user, not a bot account.");
     return;
   }
-  if (description.length === 0 || description.length > 500) {
+  if (description.length === 0 || description.length > 2_000) {
     await interaction.editReply(
-      "Persona descriptions must contain 1-500 non-whitespace characters.",
+      "Persona descriptions must contain 1-2,000 non-whitespace characters.",
     );
     return;
   }
