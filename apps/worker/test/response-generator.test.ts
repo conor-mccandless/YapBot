@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildOpenAIContent,
   buildOpenAIInput,
+  isGeneratedResponseWithinLimits,
   sanitizeGeneratedResponse,
   selectOpenAIModel,
   YAPBOT_INSTRUCTIONS,
@@ -10,15 +11,22 @@ import {
   YapResponseGenerator,
 } from "../src/response-generator.js";
 
+function completed(text: string) {
+  return { status: "completed" as const, text };
+}
+
 describe("YapResponseGenerator", () => {
   it("returns a sanitized OpenAI response when generation succeeds", async () => {
-    const request = vi.fn().mockResolvedValue("  Keep   yapping, @everyone!  ");
+    const request = vi
+      .fn()
+      .mockResolvedValue(completed("  Keep   yapping, @everyone!  "));
     const generator = new YapResponseGenerator(request, () => "fallback");
 
     await expect(
       generator.generate("hello", true, "Works at a library."),
     ).resolves.toEqual({
       content: "Keep yapping, @\u200beveryone!",
+      openAIMetadata: { status: "completed" },
       source: "openai",
     });
     expect(request).toHaveBeenCalledWith({
@@ -31,7 +39,9 @@ describe("YapResponseGenerator", () => {
     const request = vi
       .fn()
       .mockResolvedValue(
-        "The archive is busy today. Let the channel catch its breath before volume four.",
+        completed(
+          "The archive is busy today. Let the channel catch its breath before volume four.",
+        ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
     const trigger = {
@@ -59,7 +69,9 @@ describe("YapResponseGenerator", () => {
     const request = vi
       .fn()
       .mockResolvedValue(
-        "A three-part bulletin has been duly received. Give the channel a moment before issuing the sequel.",
+        completed(
+          "A three-part bulletin has been duly received. Give the channel a moment before issuing the sequel.",
+        ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
     const messageContext = [
@@ -96,7 +108,9 @@ describe("YapResponseGenerator", () => {
   });
 
   it("can generate when an earlier threshold message has text and the final message does not", async () => {
-    const request = vi.fn().mockResolvedValue("The sequence is complete.");
+    const request = vi
+      .fn()
+      .mockResolvedValue(completed("The sequence is complete."));
     const generator = new YapResponseGenerator(request, () => "fallback");
 
     await expect(
@@ -114,6 +128,7 @@ describe("YapResponseGenerator", () => {
       ]),
     ).resolves.toEqual({
       content: "The sequence is complete.",
+      openAIMetadata: { status: "completed" },
       source: "openai",
     });
     expect(request).toHaveBeenCalledOnce();
@@ -147,7 +162,7 @@ describe("YapResponseGenerator", () => {
       () => "fallback",
     );
     const empty = new YapResponseGenerator(
-      vi.fn().mockResolvedValue("  "),
+      vi.fn().mockResolvedValue(completed("  ")),
       () => "fallback",
     );
 
@@ -161,23 +176,78 @@ describe("YapResponseGenerator", () => {
     });
   });
 
-  it("reports output-budget exhaustion separately from an ordinary empty output", async () => {
+  it("discards partial output when the provider exhausts its output budget", async () => {
+    const openAIResult = {
+      incompleteReason: "max_output_tokens",
+      status: "incomplete" as const,
+      text: "It makes sense. Your three-message peer review went from",
+      usage: {
+        inputTokens: 300,
+        outputTokens: 160,
+        reasoningTokens: 148,
+        totalTokens: 460,
+      },
+    };
     const generator = new YapResponseGenerator(
-      vi.fn().mockResolvedValue({
-        incompleteReason: "max_output_tokens",
-        text: "",
-      }),
+      vi.fn().mockResolvedValue(openAIResult),
       () => "fallback",
     );
 
-    await expect(generator.generate("hello", true)).resolves.toMatchObject({
+    await expect(generator.generate("hello", true)).resolves.toEqual({
+      content: "fallback",
       fallbackReason: "max_output_tokens",
+      openAIMetadata: {
+        incompleteReason: openAIResult.incompleteReason,
+        status: openAIResult.status,
+        usage: openAIResult.usage,
+      },
+      source: "static",
+    });
+  });
+
+  it("fails closed for every non-completed provider status", async () => {
+    const openAIResult = {
+      incompleteReason: "content_filter",
+      status: "incomplete" as const,
+      text: "A partial response that must never be published.",
+    };
+    const generator = new YapResponseGenerator(
+      vi.fn().mockResolvedValue(openAIResult),
+      () => "fallback",
+    );
+
+    await expect(generator.generate("hello", true)).resolves.toEqual({
+      content: "fallback",
+      fallbackReason: "provider_incomplete",
+      openAIMetadata: {
+        incompleteReason: openAIResult.incompleteReason,
+        status: openAIResult.status,
+      },
+      source: "static",
+    });
+  });
+
+  it("rejects oversized provider output instead of truncating it", async () => {
+    const openAIResult = completed(
+      Array.from({ length: 46 }, (_, index) => `word${index + 1}`).join(" "),
+    );
+    const generator = new YapResponseGenerator(
+      vi.fn().mockResolvedValue(openAIResult),
+      () => "fallback",
+    );
+
+    await expect(generator.generate("hello", true)).resolves.toEqual({
+      content: "fallback",
+      fallbackReason: "oversized_output",
+      openAIMetadata: { status: "completed" },
       source: "static",
     });
   });
 
   it("generates from image input when the triggering message has no text", async () => {
-    const request = vi.fn().mockResolvedValue("A remarkably curated disaster.");
+    const request = vi
+      .fn()
+      .mockResolvedValue(completed("A remarkably curated disaster."));
     const generator = new YapResponseGenerator(request, () => "fallback");
     const imageDataUrls = ["data:image/png;base64,AQID"];
 
@@ -185,6 +255,7 @@ describe("YapResponseGenerator", () => {
       generator.generate("", true, "Works at a library.", imageDataUrls),
     ).resolves.toEqual({
       content: "A remarkably curated disaster.",
+      openAIMetadata: { status: "completed" },
       source: "openai",
     });
     expect(request).toHaveBeenCalledWith({
@@ -377,24 +448,25 @@ describe("buildOpenAIContent", () => {
 });
 
 describe("sanitizeGeneratedResponse", () => {
-  it("bounds output length and neutralizes Discord mentions", () => {
+  it("normalizes output and neutralizes Discord mentions without truncating", () => {
     const value = `${"x".repeat(510)} @here`;
     const sanitized = sanitizeGeneratedResponse(value);
 
-    expect(sanitized.length).toBe(500);
+    expect(sanitized.length).toBeGreaterThan(500);
     expect(sanitized).not.toContain("@here");
+    expect(isGeneratedResponseWithinLimits(sanitized)).toBe(false);
   });
 
-  it("allows very short replies and caps long replies at 45 words", () => {
+  it("allows very short replies and rejects replies over 45 words", () => {
     expect(sanitizeGeneratedResponse("Enough, professor.")).toBe(
       "Enough, professor.",
     );
+    expect(isGeneratedResponseWithinLimits("Enough, professor.")).toBe(true);
 
     const sanitized = sanitizeGeneratedResponse(
       Array.from({ length: 60 }, (_, index) => `word${index + 1}`).join(" "),
     );
-    expect(sanitized.split(" ")).toHaveLength(45);
-    expect(sanitized).toContain("word45");
-    expect(sanitized).not.toContain("word46");
+    expect(sanitized.split(" ")).toHaveLength(60);
+    expect(isGeneratedResponseWithinLimits(sanitized)).toBe(false);
   });
 });

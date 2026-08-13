@@ -20,10 +20,10 @@ describe("parseEnvironment", () => {
     expect(result.LOG_LEVEL).toBe("info");
     expect(result.NODE_ENV).toBe("development");
     expect(result.OPENAI_DAILY_GUILD_LIMIT).toBe(100);
-    expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(160);
+    expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(900);
     expect(result.OPENAI_IMAGE_MODEL).toBeUndefined();
     expect(result.OPENAI_MODEL).toBe("gpt-5.6-luna");
-    expect(result.OPENAI_REASONING_EFFORT).toBe("medium");
+    expect(result.OPENAI_REASONING_EFFORT).toBe("low");
     expect(result.OPENAI_TIMEOUT_MS).toBe(10_000);
     expect(result.OPENAI_API_KEY).toBeUndefined();
   });

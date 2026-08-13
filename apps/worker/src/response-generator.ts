@@ -53,14 +53,34 @@ export interface YapTriggerContext {
   windowSeconds: number;
 }
 
-export interface OpenAITextResult {
+export interface OpenAIResponseMetadata {
   incompleteReason?: string;
+  status: OpenAIResponseStatus | "unknown";
+  usage?: OpenAIUsage;
+}
+
+export interface OpenAITextResult extends OpenAIResponseMetadata {
   text: string;
 }
 
 export type OpenAITextRequest = (
   input: OpenAITextInput,
-) => Promise<string | OpenAITextResult>;
+) => Promise<OpenAITextResult>;
+
+export type OpenAIResponseStatus =
+  | "cancelled"
+  | "completed"
+  | "failed"
+  | "in_progress"
+  | "incomplete"
+  | "queued";
+
+export interface OpenAIUsage {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
 
 export type FallbackReason =
   | "daily_limit"
@@ -68,13 +88,20 @@ export type FallbackReason =
   | "empty_output"
   | "max_output_tokens"
   | "not_configured"
+  | "oversized_output"
+  | "provider_incomplete"
   | "request_failed";
 
 export type GeneratedResponse =
-  | { content: string; source: "openai" }
+  | {
+      content: string;
+      openAIMetadata: OpenAIResponseMetadata;
+      source: "openai";
+    }
   | {
       content: string;
       fallbackReason: FallbackReason;
+      openAIMetadata?: OpenAIResponseMetadata;
       source: "static";
     };
 
@@ -108,7 +135,19 @@ export function createOpenAITextRequest(options: {
       ...(response.incomplete_details?.reason
         ? { incompleteReason: response.incomplete_details.reason }
         : {}),
+      status: response.status ?? "unknown",
       text: response.output_text,
+      ...(response.usage
+        ? {
+            usage: {
+              inputTokens: response.usage.input_tokens,
+              outputTokens: response.usage.output_tokens,
+              reasoningTokens:
+                response.usage.output_tokens_details.reasoning_tokens,
+              totalTokens: response.usage.total_tokens,
+            },
+          }
+        : {}),
     };
   };
 }
@@ -165,26 +204,38 @@ export class YapResponseGenerator {
         ...(messageContext.length > 0 ? { messageContext } : {}),
         ...(trigger ? { trigger } : {}),
       });
-      const output = sanitizeGeneratedResponse(
-        typeof result === "string" ? result : result.text,
-      );
-      return output
-        ? { content: output, source: "openai" }
-        : this.fallback(
-            typeof result !== "string" &&
-              result.incompleteReason === "max_output_tokens"
-              ? "max_output_tokens"
-              : "empty_output",
-          );
+      const openAIMetadata = extractOpenAIMetadata(result);
+      if (result.status !== "completed") {
+        return this.fallback(
+          result.incompleteReason === "max_output_tokens"
+            ? "max_output_tokens"
+            : "provider_incomplete",
+          openAIMetadata,
+        );
+      }
+
+      const output = sanitizeGeneratedResponse(result.text);
+      if (!output) {
+        return this.fallback("empty_output", openAIMetadata);
+      }
+      if (!isGeneratedResponseWithinLimits(output)) {
+        return this.fallback("oversized_output", openAIMetadata);
+      }
+
+      return { content: output, openAIMetadata, source: "openai" };
     } catch {
       return this.fallback("request_failed");
     }
   }
 
-  private fallback(reason: FallbackReason): GeneratedResponse {
+  private fallback(
+    reason: FallbackReason,
+    openAIMetadata?: OpenAIResponseMetadata,
+  ): GeneratedResponse {
     return {
       content: this.staticFallback(),
       fallbackReason: reason,
+      ...(openAIMetadata ? { openAIMetadata } : {}),
       source: "static",
     };
   }
@@ -264,14 +315,24 @@ function classifyDiscordPost(
 }
 
 export function sanitizeGeneratedResponse(value: string): string {
-  const normalized = value
-    .replace(/\s+/g, " ")
-    .replaceAll("@", "@\u200b")
-    .trim();
-  return normalized
-    .split(" ")
-    .slice(0, MAX_RESPONSE_WORDS)
-    .join(" ")
-    .slice(0, MAX_RESPONSE_CHARACTERS)
-    .trim();
+  return value.replace(/\s+/g, " ").replaceAll("@", "@\u200b").trim();
+}
+
+export function isGeneratedResponseWithinLimits(value: string): boolean {
+  const wordCount = value.split(/\s+/).filter(Boolean).length;
+  return (
+    value.length <= MAX_RESPONSE_CHARACTERS && wordCount <= MAX_RESPONSE_WORDS
+  );
+}
+
+function extractOpenAIMetadata(
+  result: OpenAITextResult,
+): OpenAIResponseMetadata {
+  return {
+    ...(result.incompleteReason
+      ? { incompleteReason: result.incompleteReason }
+      : {}),
+    status: result.status,
+    ...(result.usage ? { usage: result.usage } : {}),
+  };
 }

@@ -277,6 +277,18 @@ export async function startWorker(
                   environment.OPENAI_IMAGE_MODEL,
                 )
               : null,
+            maxOutputTokens: environment.OPENAI_MAX_OUTPUT_TOKENS,
+            openAIIncompleteReason:
+              generated.openAIMetadata?.incompleteReason ?? null,
+            openAIInputTokens:
+              generated.openAIMetadata?.usage?.inputTokens ?? null,
+            openAIOutputTokens:
+              generated.openAIMetadata?.usage?.outputTokens ?? null,
+            openAIReasoningTokens:
+              generated.openAIMetadata?.usage?.reasoningTokens ?? null,
+            openAIStatus: generated.openAIMetadata?.status ?? null,
+            openAITotalTokens:
+              generated.openAIMetadata?.usage?.totalTokens ?? null,
             outputWordCount: generated.content.split(/\s+/).filter(Boolean)
               .length,
             personaPresent: Boolean(personaDescription?.trim()),
