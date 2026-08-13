@@ -17,7 +17,15 @@ const MAX_STORED_IMAGE_REFERENCES_PER_MEMBER = 12;
 export interface DiscordImageReference {
   contentType: string;
   size: number;
+  sourceAttachmentSequence?: number;
+  sourceMessageId?: string;
   url: string;
+}
+
+export interface DownloadedDiscordImage {
+  dataUrl: string;
+  sourceAttachmentSequence: number;
+  sourceMessageId: string;
 }
 
 export interface DiscordAttachmentLike {
@@ -76,6 +84,7 @@ export class RecentImageContextStore {
   record(input: {
     guildId: string;
     images: readonly DiscordImageReference[];
+    messageId: string;
     nowMs: number;
     userId: string;
     windowSeconds: number;
@@ -91,9 +100,11 @@ export class RecentImageContextStore {
       (image) => image.createdAtMs >= windowStartMs,
     );
     state.images.push(
-      ...input.images.map((image) => ({
+      ...input.images.map((image, index) => ({
         ...image,
         createdAtMs: input.nowMs,
+        sourceAttachmentSequence: index + 1,
+        sourceMessageId: input.messageId,
       })),
     );
     state.images = state.images.slice(-MAX_STORED_IMAGE_REFERENCES_PER_MEMBER);
@@ -120,6 +131,8 @@ export class RecentImageContextStore {
     return state.images.slice(-MAX_IMAGE_COUNT).map((image) => ({
       contentType: image.contentType,
       size: image.size,
+      sourceAttachmentSequence: image.sourceAttachmentSequence ?? 1,
+      sourceMessageId: image.sourceMessageId ?? "unknown",
       url: image.url,
     }));
   }
@@ -158,8 +171,8 @@ export type ImageFetcher = (
 export async function downloadDiscordImages(
   references: readonly DiscordImageReference[],
   fetchImage: ImageFetcher = fetch,
-): Promise<readonly string[]> {
-  const images: string[] = [];
+): Promise<readonly DownloadedDiscordImage[]> {
+  const images: DownloadedDiscordImage[] = [];
   let totalBytes = 0;
 
   for (const reference of references.slice(-MAX_IMAGE_COUNT)) {
@@ -209,9 +222,11 @@ export async function downloadDiscordImages(
       }
 
       totalBytes += bytes.byteLength;
-      images.push(
-        `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`,
-      );
+      images.push({
+        dataUrl: `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`,
+        sourceAttachmentSequence: reference.sourceAttachmentSequence ?? 1,
+        sourceMessageId: reference.sourceMessageId ?? "unknown",
+      });
     } catch {
       // A failed image must not prevent text generation or static fallback.
     } finally {

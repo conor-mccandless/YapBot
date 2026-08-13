@@ -43,6 +43,7 @@ describe("RecentImageContextStore", () => {
       store.record({
         guildId: "guild-1",
         images: [{ ...image, url: `${image.url}?v=${index}` }],
+        messageId: `message-${index}`,
         nowMs: index * 1_000,
         userId: "user-1",
         windowSeconds: 30,
@@ -64,6 +65,7 @@ describe("RecentImageContextStore", () => {
     store.record({
       guildId: "guild-1",
       images: [image],
+      messageId: "message-1",
       nowMs: 0,
       userId: "user-1",
       windowSeconds: 30,
@@ -94,8 +96,23 @@ describe("downloadDiscordImages", () => {
       }),
     );
 
-    await expect(downloadDiscordImages([image], fetchImage)).resolves.toEqual([
-      "data:image/png;base64,AQID",
+    await expect(
+      downloadDiscordImages(
+        [
+          {
+            ...image,
+            sourceAttachmentSequence: 2,
+            sourceMessageId: "message-3",
+          },
+        ],
+        fetchImage,
+      ),
+    ).resolves.toEqual([
+      {
+        dataUrl: "data:image/png;base64,AQID",
+        sourceAttachmentSequence: 2,
+        sourceMessageId: "message-3",
+      },
     ]);
     expect(fetchImage).toHaveBeenCalledWith(
       image.url,
@@ -117,7 +134,13 @@ describe("downloadDiscordImages", () => {
 
     await expect(
       downloadDiscordImages([webpReference], fetchImage),
-    ).resolves.toEqual(["data:image/png;base64,AQID"]);
+    ).resolves.toEqual([
+      {
+        dataUrl: "data:image/png;base64,AQID",
+        sourceAttachmentSequence: 1,
+        sourceMessageId: "unknown",
+      },
+    ]);
   });
 
   it("skips failed and MIME-mismatched downloads", async () => {

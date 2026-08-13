@@ -15,7 +15,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
 - Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
-- Usually one sharp, direct 8-28 word reply, with up to 45 words when conversation, persona, or image context genuinely improves the joke.
+- One compact two-sentence reply of no more than 45 words: a grounded answer or roast followed by an in-character explanation that the rapid posting triggered YapBot and the member should slow down or consolidate.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
@@ -446,13 +446,13 @@ Voice channels, voice audio, chat attached to voice channels, direct messages, a
 
 YapBot can understand eligible Discord image attachments but does not generate or send images.
 
-When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text, relative timing, and eligible image count in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold as one chronological conversation window. The final item is identified as the event that crossed the threshold, but it is not automatically treated as the subject of the reply. When the final message explicitly mentions YapBot, the reply addresses it directly while retaining the earlier window as optional callback material. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. Text from other members is not included.
+When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifying message text, relative timing, direct-YapBot mention state, and eligible image references in memory for the rolling window. At a trigger it submits the latest number of messages equal to the configured threshold as one chronological conversation window. If any included message directly mentions YapBot, the most recent such message becomes the primary conversational target; otherwise YapBot selects the strongest grounded angle across the window. The final item is still identified as the event that crossed the threshold. Every submitted image is mapped to its exact source-message sequence, and a direct question about an image must be answered using a concrete visible detail. Image-only events are identified as image posts rather than blank messages. Each text message is bounded to Discord's 2,000-character content limit, and the threshold is capped at 100. Text from other members is not included.
 
 - Accepted formats: PNG, JPEG, and WEBP.
 - Maximum declared attachment size: 20 MiB per image.
 - Maximum downloaded image payload: 50 MiB per generation.
 - Maximum recent references kept in memory per user: 12.
-- Maximum images submitted for one generation: the latest 3 within the rolling window.
+- Maximum images submitted for one generation: the latest 3 attached to messages in the submitted threshold-sized conversation window.
 - Source restriction: HTTPS Discord attachment CDN URLs.
 - Redirects are rejected and each download is aborted after five seconds.
 - Image references, bytes, extracted text, and generated replies are not persisted by YapBot.

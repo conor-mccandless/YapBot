@@ -13,4 +13,11 @@ describe("selectStaticResponse", () => {
       true,
     );
   });
+
+  it("keeps the trigger explanation in a second short sentence", () => {
+    for (const response of STATIC_RESPONSES) {
+      expect(response.match(/[.!?]+(?=\s|$)/g)).toHaveLength(2);
+      expect(response.split(/\s+/).length).toBeLessThanOrEqual(45);
+    }
+  });
 });

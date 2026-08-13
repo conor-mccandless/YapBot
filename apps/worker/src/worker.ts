@@ -15,10 +15,14 @@ import {
   downloadDiscordImages,
   RecentImageContextStore,
 } from "./image-context.js";
-import { RecentMessageContextStore } from "./message-context.js";
+import {
+  normalizeYapBotMention,
+  RecentMessageContextStore,
+} from "./message-context.js";
 import {
   createOpenAITextRequest,
   selectOpenAIModel,
+  selectResponseDecision,
   YAPBOT_PROMPT_VERSION,
   YapResponseGenerator,
 } from "./response-generator.js";
@@ -181,12 +185,21 @@ export async function startWorker(
       const messageImages = [...message.attachments.values()]
         .map((attachment) => createDiscordImageReference(attachment))
         .filter((image) => image !== undefined);
+      const directlyMentionsBot = client.user
+        ? message.mentions.users.has(client.user.id)
+        : false;
+      const normalizedMessageContent = normalizeYapBotMention(
+        message.content,
+        client.user?.id,
+      );
       if (responseGenerator.openAIConfigured) {
         messageContextStore.record({
           channelId: message.channelId,
-          content: message.content,
+          content: normalizedMessageContent,
+          directlyMentionsBot,
           eligibleImageAttachmentCount: messageImages.length,
           guildId: message.guildId,
+          messageId: message.id,
           nowMs,
           userId: message.author.id,
           windowSeconds: config.windowSeconds,
@@ -195,6 +208,7 @@ export async function startWorker(
       imageContextStore.record({
         guildId: message.guildId,
         images: messageImages,
+        messageId: message.id,
         nowMs,
         userId: message.author.id,
         windowSeconds: config.windowSeconds,
@@ -219,12 +233,18 @@ export async function startWorker(
           userId: message.author.id,
           windowSeconds: config.windowSeconds,
         });
-        const imageDataUrls = responseGenerator.openAIConfigured
-          ? await downloadDiscordImages(recentImages)
+        const recentMessageIds = new Set(
+          recentMessages.map((recentMessage) => recentMessage.messageId),
+        );
+        const conversationImageReferences = recentImages.filter(
+          (image) =>
+            image.sourceMessageId !== undefined &&
+            recentMessageIds.has(image.sourceMessageId),
+        );
+        const images = responseGenerator.openAIConfigured
+          ? await downloadDiscordImages(conversationImageReferences)
           : [];
-        const latestMessageDirectlyMentionsBot = client.user
-          ? message.mentions.users.has(client.user.id)
-          : false;
+        const responseDecision = selectResponseDecision(recentMessages);
 
         let personaDescription: string | undefined;
         try {
@@ -255,29 +275,28 @@ export async function startWorker(
 
         const generationStartedAt = Date.now();
         const generated = await responseGenerator.generate(
-          message.content,
+          normalizedMessageContent,
           allowOpenAI,
           personaDescription,
-          imageDataUrls,
+          images,
           {
             messageCount: decision.count,
             threshold: config.threshold,
             windowSeconds: config.windowSeconds,
           },
           recentMessages,
-          latestMessageDirectlyMentionsBot,
         );
         logger.info(
           {
             generationLatencyMs: Date.now() - generationStartedAt,
             conversationWindowMessageCount: recentMessages.length,
-            imageCount: imageDataUrls.length,
-            latestMessageDirectlyMentionsBot,
+            directAddressSequence: responseDecision.directAddressSequence,
+            imageCount: images.length,
             model: responseGenerator.openAIConfigured
               ? selectOpenAIModel(
                   {
-                    imageDataUrls,
-                    messageContent: message.content,
+                    images,
+                    messageContent: normalizedMessageContent,
                   },
                   environment.OPENAI_MODEL,
                   environment.OPENAI_IMAGE_MODEL,
@@ -299,6 +318,7 @@ export async function startWorker(
               .length,
             personaPresent: Boolean(personaDescription?.trim()),
             promptVersion: YAPBOT_PROMPT_VERSION,
+            responseMode: responseDecision.mode,
             reasoningEffort: environment.OPENAI_REASONING_EFFORT,
             source: generated.source,
           },
@@ -314,8 +334,8 @@ export async function startWorker(
             {
               fallbackReason: generated.fallbackReason,
               guildId: message.guildId,
-              imageCount: imageDataUrls.length,
-              imageReferenceCount: recentImages.length,
+              imageCount: images.length,
+              imageReferenceCount: conversationImageReferences.length,
             },
             "Used static response fallback",
           );

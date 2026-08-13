@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { RecentMessageContextStore } from "../src/message-context.js";
+import {
+  normalizeYapBotMention,
+  RecentMessageContextStore,
+} from "../src/message-context.js";
+
+describe("normalizeYapBotMention", () => {
+  it("turns current and legacy Discord mention syntax into readable context", () => {
+    expect(
+      normalizeYapBotMention(
+        "<@123> are you around? <@!123> answer me.",
+        "123",
+      ),
+    ).toBe("@YapBot are you around? @YapBot answer me.");
+  });
+});
 
 describe("RecentMessageContextStore", () => {
   it("returns the ordered messages that satisfy the configured threshold", () => {
@@ -9,8 +23,10 @@ describe("RecentMessageContextStore", () => {
       store.record({
         channelId: index % 2 === 0 ? "channel-1" : "channel-2",
         content: `message ${index + 1}`,
+        directlyMentionsBot: index === 2,
         eligibleImageAttachmentCount: index === 3 ? 1 : 0,
         guildId: "guild-1",
+        messageId: `message-${index + 1}`,
         nowMs: index * 1_000,
         userId: "user-1",
         windowSeconds: 30,
@@ -30,19 +46,25 @@ describe("RecentMessageContextStore", () => {
         channelId: "channel-2",
         content: "message 2",
         createdAtMs: 1_000,
+        directlyMentionsBot: false,
         eligibleImageAttachmentCount: 0,
+        messageId: "message-2",
       },
       {
         channelId: "channel-1",
         content: "message 3",
         createdAtMs: 2_000,
+        directlyMentionsBot: true,
         eligibleImageAttachmentCount: 0,
+        messageId: "message-3",
       },
       {
         channelId: "channel-2",
         content: "message 4",
         createdAtMs: 3_000,
+        directlyMentionsBot: false,
         eligibleImageAttachmentCount: 1,
+        messageId: "message-4",
       },
     ]);
   });
@@ -52,8 +74,10 @@ describe("RecentMessageContextStore", () => {
     store.record({
       channelId: "channel-1",
       content: "expired",
+      directlyMentionsBot: false,
       eligibleImageAttachmentCount: 0,
       guildId: "guild-1",
+      messageId: "message-1",
       nowMs: 0,
       userId: "user-1",
       windowSeconds: 30,
@@ -77,8 +101,10 @@ describe("RecentMessageContextStore", () => {
     store.record({
       channelId: "channel-1",
       content: "m".repeat(2_100),
+      directlyMentionsBot: false,
       eligibleImageAttachmentCount: 0,
       guildId: "guild-1",
+      messageId: "message-1",
       nowMs: 0,
       userId: "user-1",
       windowSeconds: 30,

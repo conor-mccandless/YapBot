@@ -5,7 +5,9 @@ export interface YapMessageContext {
   channelId: string;
   content: string;
   createdAtMs: number;
+  directlyMentionsBot: boolean;
   eligibleImageAttachmentCount: number;
+  messageId: string;
 }
 
 type StoredMessageContext = YapMessageContext;
@@ -21,8 +23,10 @@ export class RecentMessageContextStore {
   record(input: {
     channelId: string;
     content: string;
+    directlyMentionsBot: boolean;
     eligibleImageAttachmentCount: number;
     guildId: string;
+    messageId: string;
     nowMs: number;
     userId: string;
     windowSeconds: number;
@@ -41,7 +45,9 @@ export class RecentMessageContextStore {
       channelId: input.channelId,
       content: input.content.slice(0, MAX_DISCORD_MESSAGE_CHARACTERS),
       createdAtMs: input.nowMs,
+      directlyMentionsBot: input.directlyMentionsBot,
       eligibleImageAttachmentCount: input.eligibleImageAttachmentCount,
+      messageId: input.messageId,
     });
     state.messages = state.messages.slice(-MAX_STORED_MESSAGES_PER_MEMBER);
     state.lastActivityMs = input.nowMs;
@@ -69,7 +75,9 @@ export class RecentMessageContextStore {
       channelId: message.channelId,
       content: message.content,
       createdAtMs: message.createdAtMs,
+      directlyMentionsBot: message.directlyMentionsBot,
       eligibleImageAttachmentCount: message.eligibleImageAttachmentCount,
+      messageId: message.messageId,
     }));
   }
 
@@ -97,6 +105,19 @@ export class RecentMessageContextStore {
   get size(): number {
     return this.#states.size;
   }
+}
+
+export function normalizeYapBotMention(
+  content: string,
+  botUserId?: string,
+): string {
+  if (!botUserId) {
+    return content;
+  }
+
+  return content
+    .replaceAll(`<@${botUserId}>`, "@YapBot")
+    .replaceAll(`<@!${botUserId}>`, "@YapBot");
 }
 
 function memberKey(guildId: string, userId: string): string {
