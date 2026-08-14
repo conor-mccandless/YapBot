@@ -351,7 +351,7 @@ export async function startWorker(
             personaPresent: Boolean(personaDescription?.trim()),
             promptVersion: YAPBOT_PROMPT_VERSION,
             responseMode: responseDecision.mode,
-            responseRationaleFlavor: responseDecision.rationaleFlavor,
+            responsePersonaAvailability: responseDecision.personaAvailability,
             responseVisualAvailability: responseDecision.visualAvailability,
             reasoningEffort: environment.OPENAI_REASONING_EFFORT,
             source: generated.source,
