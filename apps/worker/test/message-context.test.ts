@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   directlyAddressesYapBot,
+  directlyMentionsYapBotRole,
   directlyRepliesToYapBot,
   normalizeYapBotMention,
   RecentMessageContextStore,
@@ -22,6 +23,30 @@ describe("normalizeYapBotMention", () => {
       true,
     );
     expect(directlyAddressesYapBot("a screenshot containing YapBot text")).toBe(
+      false,
+    );
+  });
+});
+
+describe("directlyMentionsYapBotRole", () => {
+  it("recognizes only a managed role belonging to the current bot", () => {
+    expect(
+      directlyMentionsYapBotRole(
+        [
+          { tags: null },
+          { tags: { botId: "other-bot" } },
+          { tags: { botId: "yapbot" } },
+        ],
+        "yapbot",
+      ),
+    ).toBe(true);
+    expect(
+      directlyMentionsYapBotRole(
+        [{ tags: null }, { tags: { botId: "other-bot" } }],
+        "yapbot",
+      ),
+    ).toBe(false);
+    expect(directlyMentionsYapBotRole([{ tags: { botId: "yapbot" } }])).toBe(
       false,
     );
   });

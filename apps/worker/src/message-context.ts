@@ -124,6 +124,17 @@ export function directlyAddressesYapBot(content: string): boolean {
   return /(?:^|\s)@YapBot\b/iu.test(content);
 }
 
+export function directlyMentionsYapBotRole(
+  roles: Iterable<{ tags: { botId?: string } | null }>,
+  botUserId?: string,
+): boolean {
+  if (!botUserId) {
+    return false;
+  }
+
+  return [...roles].some((role) => role.tags?.botId === botUserId);
+}
+
 export async function directlyRepliesToYapBot(
   message: {
     fetchReference(): Promise<{ author: { id: string } }>;

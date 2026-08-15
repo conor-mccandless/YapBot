@@ -18,6 +18,7 @@ import {
 } from "./image-context.js";
 import {
   directlyAddressesYapBot,
+  directlyMentionsYapBotRole,
   directlyRepliesToYapBot,
   normalizeYapBotMention,
   RecentMessageContextStore,
@@ -221,6 +222,10 @@ export async function startWorker(
       );
       const explicitlyAddressesBot =
         (client.user ? message.mentions.users.has(client.user.id) : false) ||
+        directlyMentionsYapBotRole(
+          message.mentions.roles.values(),
+          client.user?.id,
+        ) ||
         directlyAddressesYapBot(normalizedMessageContent);
       const directlyMentionsBot =
         explicitlyAddressesBot ||
