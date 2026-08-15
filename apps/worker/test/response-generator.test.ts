@@ -594,15 +594,44 @@ describe("response decision tree and prompt context", () => {
     expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
 
-  it("defines the v10 blunt anti-yap output contract", () => {
+  it("varies the rhetorical structure from the triggering message id", () => {
+    const variations = Array.from({ length: 4 }, (_, index) => {
+      const sourceMessage = {
+        ...message(index + 1, "hello"),
+        messageId: `variation-${index}`,
+      };
+      const input = buildOpenAIInput({
+        messageContent: "hello",
+        messageContext: [sourceMessage],
+      });
+      const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+        wordingVariation: string;
+      };
+
+      return json.wordingVariation;
+    });
+
+    expect(new Set(variations)).toEqual(
+      new Set([
+        "callback_woven",
+        "cause_first",
+        "command_first",
+        "consequence_first",
+      ]),
+    );
+  });
+
+  it("defines the v11 varied blunt anti-yap output contract", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain("exactly two short sentences");
     expect(YAPBOT_INSTRUCTIONS).toContain(
-      "three or rapid yaps summoned or triggered YapBot",
+      "YapBot appeared because this member fired off several messages quickly",
     );
-    expect(YAPBOT_INSTRUCTIONS).toContain("bluntly tell the member to cool it");
+    expect(YAPBOT_INSTRUCTIONS).toContain("blunt anti-yapping command");
     expect(YAPBOT_INSTRUCTIONS).toContain(
-      "Use yap, yaps, or yapping in this sentence",
+      "Use yap, yaps, or yapping somewhere in the reply",
     );
+    expect(YAPBOT_INSTRUCTIONS).toContain("wordingVariation");
+    expect(YAPBOT_INSTRUCTIONS).toContain("Do not always lead with a count");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "not offering gentle productivity advice",
     );
@@ -620,7 +649,7 @@ describe("response decision tree and prompt context", () => {
     );
     expect(YAPBOT_INSTRUCTIONS).not.toContain("persona_callback");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("bundle the next");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v10");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v11");
   });
 });
 
@@ -739,6 +768,31 @@ describe("generated response validation", () => {
         { messageContent: "hello" },
       ),
     ).not.toContain("missing_yap_slowdown");
+
+    const variedReplies = [
+      "That danger report has more episodes than hazards. Park the yapping until the next briefing is finished; several dispatches are why I got involved.",
+      "Your coffee run somehow developed patch notes. The third yap tripped my alarm, so close the live feed until the next update has an ending.",
+      "One pocket search did not need a press office. Cut the feed and finish the next yap first; those back-to-back bulletins brought me in.",
+      "Three trailers and still no feature is nasty work. I am here because the yaps became a rollout; hold the next one until the reveal exists.",
+    ];
+    for (const reply of variedReplies) {
+      expect(
+        validateGeneratedResponse(reply, { messageContent: "hello" }),
+      ).toEqual([]);
+    }
+
+    expect(
+      validateGeneratedResponse(
+        "That danger report has more episodes than hazards. Several dispatches brought me in, so let the next briefing arrive complete.",
+        { messageContent: "hello" },
+      ),
+    ).toContain("missing_yap_slowdown");
+    expect(
+      validateGeneratedResponse(
+        "That danger report has more episodes than hazards. Several yaps brought me in, and the next briefing can arrive complete.",
+        { messageContent: "hello" },
+      ),
+    ).toContain("missing_yap_slowdown");
   });
 
   it("allows delivery wording when the member explicitly asks about a URL", () => {

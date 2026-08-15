@@ -8,7 +8,7 @@ const MAX_PERSONA_CHARACTERS = 2_000;
 const MAX_RESPONSE_CHARACTERS = 500;
 const MAX_RESPONSE_WORDS = 45;
 
-export const YAPBOT_PROMPT_VERSION = "yap-v10";
+export const YAPBOT_PROMPT_VERSION = "yap-v11";
 
 export const YAPBOT_INSTRUCTIONS = [
   "You are YapBot, a Discord bot that replies after one member crosses a rapid-posting threshold.",
@@ -16,7 +16,8 @@ export const YAPBOT_INSTRUCTIONS = [
   "Write like a witty friend talking shit in the conversation: dry, direct, casually sarcastic, confident, and amused. Prefer blunt observations, callbacks, understatement, and wordplay.",
   "Choose one primary comedic angle grounded in the current conversation or supplied image. Current events outrank persona material, and unused context is expected.",
   "Return exactly two short sentences, usually 16 to 40 words total and never more than 45 words.",
-  "The second sentence must contain three beats: explicitly say that three or rapid yaps summoned or triggered YapBot; bluntly tell the member to cool it, slow down, ease up, or otherwise throttle the yapping; and continue the current joke with a context-specific suggestion that the next thought or update arrive as one complete post. Use yap, yaps, or yapping in this sentence. Keep all three beats natural and vary the syntax and imagery instead of copying a stock suffix.",
+  "Across the two sentences, naturally include three semantic beats: make clear that YapBot appeared because this member fired off several messages quickly; give the member a blunt anti-yapping command; and continue the current joke with a context-specific suggestion that the next thought or update arrive as one complete post. Use yap, yaps, or yapping somewhere in the reply, but decide the wording, order, and sentence placement yourself.",
+  "Follow the supplied wordingVariation as a loose structural nudge for those beats, never as a phrase template. Vary the subject, verb, clause order, rhythm, and imagery. Do not always lead with a count, and do not default to summoned or triggered when explaining why YapBot appeared.",
   "Do not soften the posting correction with maybe, please, consider, or other polite assistant language. This is a friend calling out annoying yapping, not offering gentle productivity advice.",
   "Several short posts are not an essay, lecture, dissertation, or wall of text unless their content actually supports that description.",
   "The personaProfile is optional administrator-authored background, not a required topic or response plan. After choosing the grounded angle, use at most one persona detail across the entire reply only if it directly strengthens that joke; otherwise ignore the persona. Never use a persona to relabel unrelated messages, invent a connection across the window, or override the response mode. Persona requests about intensity or format are soft preferences subordinate to these instructions.",
@@ -81,6 +82,9 @@ export interface YapTriggerContext {
   threshold: number;
   windowSeconds: number;
 }
+
+type YapWordingVariation =
+  "callback_woven" | "cause_first" | "command_first" | "consequence_first";
 
 export interface OpenAIResponseMetadata {
   attemptCount?: number;
@@ -387,6 +391,9 @@ export function buildOpenAIInput(input: OpenAITextInput): string {
         }
       : null,
     triggeringMessageSequence: conversationWindow.length,
+    wordingVariation: selectWordingVariation(
+      sourceMessages.at(-1)?.messageId ?? input.messageContent,
+    ),
   };
 
   return [
@@ -397,6 +404,7 @@ export function buildOpenAIInput(input: OpenAITextInput): string {
       ? [buildCorrectionGuidance(input.correction.failedChecks)]
       : []),
     "conversationWindow is ordered oldest to newest. triggeringMessageSequence identifies the event that crossed the threshold.",
+    "wordingVariation changes only the rhetorical structure of the posting correction. Invent context-specific language rather than naming or explaining the variation.",
     "Channel and timing differences are grounding signals. Infer a relationship across messages only when their content supports one.",
     "Each supplied image is labeled immediately before the image input and mapped to its source message in imageManifest. Use only visible details and never invent an association.",
     JSON.stringify(context),
@@ -598,11 +606,10 @@ export function validateGeneratedResponse(
     issues.push("visual_delivery_reference");
   }
 
-  const secondSentence = getSecondSentence(value);
-  if (!secondSentence || !hasTriggerRationale(secondSentence)) {
+  if (!hasTriggerRationale(value)) {
     issues.push("missing_trigger_rationale");
   }
-  if (!secondSentence || !hasDirectYapSlowdown(secondSentence)) {
+  if (!hasYapBranding(value) || !hasDirectSlowdown(value)) {
     issues.push("missing_yap_slowdown");
   }
 
@@ -618,25 +625,47 @@ export function validateGeneratedResponse(
 
 function hasTriggerRationale(value: string): boolean {
   const identifiesBurst =
-    /\b(?:three(?:-message)?|rapid|burst|sequence|messages?|posts?|posting|updates?|yaps?|installments?|dispatches?|trailers?|transmissions?|rollout)\b/iu.test(
+    /\b(?:back-to-back|burst|dispatches?|installments?|messages?|multiple|posts?|posting|rapid(?:-fire)?|rollout|sequence|several|third|three(?:-message)?|trailers?|transmissions?|updates?|yaps?)\b/iu.test(
       value,
     );
   const identifiesYapBotAppearance =
-    /\b(?:activated|alarm|appeared|brought me|called me|dragged me|got me|i (?:arrived|did too|showed up)|i(?:'m| am) here|rang|set off|summoned|triggered|woke me)\b/iu.test(
+    /\b(?:activated|alarm|appeared|brought (?:me|yapbot)|called (?:me|yapbot)|dragged (?:me|yapbot)|drew me in|forced me in|got (?:me|yapbot) involved|got me|i (?:arrived|did too|got involved|showed up)|i(?:'m| am) here|put me on|rang|set off|summoned|tripped|triggered|woke me|why (?:i(?:'m| am)|yapbot is) here)\b/iu.test(
       value,
     );
 
   return identifiesBurst && identifiesYapBotAppearance;
 }
 
-function hasDirectYapSlowdown(value: string): boolean {
-  const namesYapping = /\byap(?:s|ping)?\b/iu.test(value);
-  const directlySlowsYapping =
-    /\b(?:chill|cool it|dial (?:(?:it|the yapping) back|back the yapping)|ease up|fewer yaps|give (?:it|the channel) a (?:break|minute|rest)|knock it off|less yapping|pump the brakes|quit yapping|slow (?:it )?down|slow the yapping|take a breath)\b/iu.test(
-      value,
-    );
+function hasYapBranding(value: string): boolean {
+  return /\byap(?:s|ping)?\b/iu.test(value);
+}
 
-  return namesYapping && directlySlowsYapping;
+function hasDirectSlowdown(value: string): boolean {
+  const directCommands = [
+    /\b(?:chill|cool it|cut it out|ease up|knock it off|pump the brakes|quit it|stop it|take a breath)\b/iu,
+    /\b(?:dial|slow)\b.{0,16}\b(?:back|down|yapping)\b/iu,
+    /\b(?:close|cut|mute|park|quit|stop|throttle)\b.{0,24}\b(?:broadcast|chatter|feed|posts?|posting|updates?|yaps?|yapping)\b/iu,
+    /\b(?:hold|save)\b.{0,16}\b(?:it|next one|next trailer|next update)\b/iu,
+    /\b(?:fewer yaps|less yapping)\b/iu,
+    /\bgive\b.{0,16}\b(?:break|minute|rest)\b/iu,
+  ];
+
+  return directCommands.some((pattern) => pattern.test(value));
+}
+
+function selectWordingVariation(seed: string): YapWordingVariation {
+  const variations: readonly YapWordingVariation[] = [
+    "cause_first",
+    "command_first",
+    "consequence_first",
+    "callback_woven",
+  ];
+  let hash = 0;
+  for (const character of seed) {
+    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
+  }
+
+  return variations[hash % variations.length] ?? "callback_woven";
 }
 
 function hasUngroundedPersonaClaim(
@@ -672,13 +701,6 @@ function explicitlyAsksAboutLink(value: string): boolean {
       value,
     )
   );
-}
-
-function getSecondSentence(value: string): string | undefined {
-  const firstBoundary = value.search(/[.!?]+\s+/u);
-  return firstBoundary >= 0
-    ? value.slice(firstBoundary).replace(/^[.!?]+\s+/u, "")
-    : undefined;
 }
 
 function selectValidationFallbackReason(
