@@ -274,7 +274,7 @@ describe("YapResponseGenerator", () => {
           "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       );
-    const generator = new YapResponseGenerator(request, () => "fallback");
+    const generator = new YapResponseGenerator(request, () => "fallback", true);
     const images = [image("message-1")];
     const messageContext = [
       message(1, "look at this", { eligibleImageAttachmentCount: 1 }),
@@ -297,6 +297,22 @@ describe("YapResponseGenerator", () => {
       openAIMetadata: {
         attemptCount: 2,
         correctionReasons: ["visual_delivery_reference"],
+        responseDiagnostics: [
+          {
+            attempt: "initial",
+            responseText:
+              "That mystery link is certainly mysterious. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
+            status: "completed",
+            validationIssues: ["visual_delivery_reference"],
+          },
+          {
+            attempt: "correction",
+            responseText:
+              "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
+            status: "completed",
+            validationIssues: [],
+          },
+        ],
         status: "completed",
       },
       source: "openai",

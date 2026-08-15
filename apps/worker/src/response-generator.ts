@@ -90,8 +90,16 @@ export interface OpenAIResponseMetadata {
   attemptCount?: number;
   correctionReasons?: readonly YapResponseValidationIssue[];
   incompleteReason?: string;
+  responseDiagnostics?: readonly OpenAIResponseDiagnostic[];
   status: OpenAIResponseStatus | "unknown";
   usage?: OpenAIUsage;
+}
+
+export interface OpenAIResponseDiagnostic {
+  attempt: "initial" | "correction";
+  responseText: string;
+  status: OpenAIResponseStatus | "unknown";
+  validationIssues?: readonly YapResponseValidationIssue[];
 }
 
 export interface OpenAITextResult extends OpenAIResponseMetadata {
@@ -208,6 +216,7 @@ export class YapResponseGenerator {
   constructor(
     private readonly openAIRequest?: OpenAITextRequest,
     private readonly staticFallback: () => string = selectStaticResponse,
+    private readonly captureResponseDiagnostics = false,
   ) {}
 
   get openAIConfigured(): boolean {
@@ -273,12 +282,18 @@ export class YapResponseGenerator {
         ...requestInput,
         correction: { failedChecks: validationIssues },
       });
-      const openAIMetadata = mergeOpenAIMetadata(
+      let openAIMetadata = mergeOpenAIMetadata(
         firstMetadata,
         extractOpenAIMetadata(retryResult),
         validationIssues,
       );
       if (retryResult.status !== "completed") {
+        openAIMetadata = this.withResponseDiagnostics(
+          openAIMetadata,
+          result,
+          validationIssues,
+          retryResult,
+        );
         return this.fallback(
           retryResult.incompleteReason === "max_output_tokens"
             ? "max_output_tokens"
@@ -291,6 +306,13 @@ export class YapResponseGenerator {
       const retryValidationIssues = validateGeneratedResponse(
         retryOutput,
         requestInput,
+      );
+      openAIMetadata = this.withResponseDiagnostics(
+        openAIMetadata,
+        result,
+        validationIssues,
+        retryResult,
+        retryValidationIssues,
       );
       if (retryValidationIssues.length > 0) {
         return this.fallback(
@@ -314,6 +336,38 @@ export class YapResponseGenerator {
       fallbackReason: reason,
       ...(openAIMetadata ? { openAIMetadata } : {}),
       source: "static",
+    };
+  }
+
+  private withResponseDiagnostics(
+    metadata: OpenAIResponseMetadata,
+    initialResult: OpenAITextResult,
+    initialValidationIssues: readonly YapResponseValidationIssue[],
+    correctionResult: OpenAITextResult,
+    correctionValidationIssues?: readonly YapResponseValidationIssue[],
+  ): OpenAIResponseMetadata {
+    if (!this.captureResponseDiagnostics) {
+      return metadata;
+    }
+
+    return {
+      ...metadata,
+      responseDiagnostics: [
+        {
+          attempt: "initial",
+          responseText: initialResult.text,
+          status: initialResult.status,
+          validationIssues: initialValidationIssues,
+        },
+        {
+          attempt: "correction",
+          responseText: correctionResult.text,
+          status: correctionResult.status,
+          ...(correctionValidationIssues
+            ? { validationIssues: correctionValidationIssues }
+            : {}),
+        },
+      ],
     };
   }
 }

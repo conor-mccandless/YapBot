@@ -64,6 +64,8 @@ export async function startWorker(
           timeoutMs: environment.OPENAI_TIMEOUT_MS,
         })
       : undefined,
+    undefined,
+    environment.OPENAI_LOG_REJECTED_RESPONSES,
   );
 
   client.once(Events.ClientReady, async (readyClient) => {
@@ -72,6 +74,8 @@ export async function startWorker(
         approvedGuildCount: environment.ALLOWED_GUILD_IDS.length,
         botUserId: readyClient.user.id,
         openAIEnabled: responseGenerator.openAIConfigured,
+        rejectedResponseDiagnosticsEnabled:
+          environment.OPENAI_LOG_REJECTED_RESPONSES,
       },
       "Discord worker ready",
     );
@@ -319,6 +323,19 @@ export async function startWorker(
           },
           recentMessages,
         );
+        for (const diagnostic of generated.openAIMetadata
+          ?.responseDiagnostics ?? []) {
+          logger.info(
+            {
+              attempt: diagnostic.attempt,
+              guildId: message.guildId,
+              responseText: diagnostic.responseText,
+              status: diagnostic.status,
+              validationIssues: diagnostic.validationIssues ?? [],
+            },
+            "Captured OpenAI response diagnostic",
+          );
+        }
         logger.info(
           {
             generationLatencyMs: Date.now() - generationStartedAt,

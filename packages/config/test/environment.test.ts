@@ -22,6 +22,7 @@ describe("parseEnvironment", () => {
     expect(result.OPENAI_DAILY_GUILD_LIMIT).toBe(100);
     expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(900);
     expect(result.OPENAI_IMAGE_MODEL).toBeUndefined();
+    expect(result.OPENAI_LOG_REJECTED_RESPONSES).toBe(false);
     expect(result.OPENAI_MODEL).toBe("gpt-5.6-luna");
     expect(result.OPENAI_REASONING_EFFORT).toBe("low");
     expect(result.OPENAI_TIMEOUT_MS).toBe(10_000);
@@ -34,6 +35,7 @@ describe("parseEnvironment", () => {
       OPENAI_API_KEY: "test-openai-key",
       OPENAI_DAILY_GUILD_LIMIT: "25",
       OPENAI_IMAGE_MODEL: "gpt-5.6-terra",
+      OPENAI_LOG_REJECTED_RESPONSES: "true",
       OPENAI_MAX_OUTPUT_TOKENS: "80",
       OPENAI_REASONING_EFFORT: "medium",
       OPENAI_TIMEOUT_MS: "5000",
@@ -42,6 +44,7 @@ describe("parseEnvironment", () => {
     expect(result.OPENAI_API_KEY).toBe("test-openai-key");
     expect(result.OPENAI_DAILY_GUILD_LIMIT).toBe(25);
     expect(result.OPENAI_IMAGE_MODEL).toBe("gpt-5.6-terra");
+    expect(result.OPENAI_LOG_REJECTED_RESPONSES).toBe(true);
     expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(80);
     expect(result.OPENAI_REASONING_EFFORT).toBe("medium");
     expect(result.OPENAI_TIMEOUT_MS).toBe(5_000);
@@ -52,6 +55,15 @@ describe("parseEnvironment", () => {
       parseEnvironment({ ...validEnvironment, OPENAI_API_KEY: "" })
         .OPENAI_API_KEY,
     ).toBeUndefined();
+  });
+
+  it("rejects invalid rejected-response diagnostic flags", () => {
+    expect(() =>
+      parseEnvironment({
+        ...validEnvironment,
+        OPENAI_LOG_REJECTED_RESPONSES: "yes",
+      }),
+    ).toThrow();
   });
 
   it("rejects an empty approved-guild list", () => {

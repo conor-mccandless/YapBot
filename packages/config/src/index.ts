@@ -20,6 +20,11 @@ const optionalSecretSchema = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const booleanStringSchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
+
 export const environmentSchema = z.object({
   ALLOWED_GUILD_IDS: z
     .string()
@@ -53,6 +58,7 @@ export const environmentSchema = z.object({
     .max(1_000)
     .default(900),
   OPENAI_IMAGE_MODEL: optionalSecretSchema,
+  OPENAI_LOG_REJECTED_RESPONSES: booleanStringSchema,
   OPENAI_MODEL: z.string().min(1).default("gpt-5.6-luna"),
   OPENAI_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh", "max"])
