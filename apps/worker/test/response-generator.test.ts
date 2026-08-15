@@ -49,7 +49,7 @@ describe("YapResponseGenerator", () => {
       .fn()
       .mockResolvedValue(
         completed(
-          "  Impressive   bulletin, @everyone. Three rapid updates rang the yap alarm; save the next edition until it is complete.  ",
+          "  Impressive   bulletin, @everyone. Three rapid yaps rang my alarm; cool it with the yapping and let the next edition arrive complete.  ",
         ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
@@ -58,7 +58,7 @@ describe("YapResponseGenerator", () => {
       generator.generate("hello", true, "Works at a library."),
     ).resolves.toEqual({
       content:
-        "Impressive bulletin, @\u200beveryone. Three rapid updates rang the yap alarm; save the next edition until it is complete.",
+        "Impressive bulletin, @\u200beveryone. Three rapid yaps rang my alarm; cool it with the yapping and let the next edition arrive complete.",
       openAIMetadata: { status: "completed" },
       source: "openai",
     });
@@ -73,7 +73,7 @@ describe("YapResponseGenerator", () => {
       .fn()
       .mockResolvedValue(
         completed(
-          "The archive is busy today. Three rapid bulletins called me in; finish the next volume before publishing.",
+          "The archive is busy today. Three rapid yaps called me in; ease up on the yapping and finish the next volume before publishing.",
         ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
@@ -135,7 +135,7 @@ describe("YapResponseGenerator", () => {
       .fn()
       .mockResolvedValue(
         completed(
-          "The visual finale has arrived. Your rapid rollout summoned me, so package the sequel together.",
+          "The visual finale has arrived. Your rapid yaps summoned me; cool it with the yapping and let the sequel arrive in one piece.",
         ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
@@ -266,12 +266,12 @@ describe("YapResponseGenerator", () => {
       .fn()
       .mockResolvedValueOnce(
         completed(
-          "That mystery link is certainly mysterious. Your rapid gallery summoned me, so consolidate the next exhibit.",
+          "That mystery link is certainly mysterious. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       )
       .mockResolvedValueOnce(
         completed(
-          "That dog is wearing sunglasses like the allegations just arrived. Your rapid gallery summoned me, so consolidate the next exhibit.",
+          "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
@@ -293,7 +293,7 @@ describe("YapResponseGenerator", () => {
       ),
     ).resolves.toEqual({
       content:
-        "That dog is wearing sunglasses like the allegations just arrived. Your rapid gallery summoned me, so consolidate the next exhibit.",
+        "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
       openAIMetadata: {
         attemptCount: 2,
         correctionReasons: ["visual_delivery_reference"],
@@ -315,7 +315,7 @@ describe("YapResponseGenerator", () => {
       .fn()
       .mockResolvedValue(
         completed(
-          "That mystery link remains mysterious. Your rapid gallery summoned me, so consolidate the next exhibit.",
+          "That mystery link remains mysterious. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
@@ -334,7 +334,7 @@ describe("YapResponseGenerator", () => {
       .fn()
       .mockResolvedValue(
         completed(
-          "That screenshot is doing numbers. Your rapid gallery opening summoned me, so consolidate the next exhibit.",
+          "That screenshot is doing numbers. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       );
     const generator = new YapResponseGenerator(request, () => "fallback");
@@ -594,13 +594,17 @@ describe("response decision tree and prompt context", () => {
     expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
 
-  it("defines the v9 relevance-first friend-tone output contract", () => {
+  it("defines the v10 blunt anti-yap output contract", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain("exactly two short sentences");
     expect(YAPBOT_INSTRUCTIONS).toContain(
-      "rapid, fragmented posting is why YapBot appeared",
+      "three or rapid yaps summoned or triggered YapBot",
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain("bluntly tell the member to cool it");
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "Use yap, yaps, or yapping in this sentence",
     );
     expect(YAPBOT_INSTRUCTIONS).toContain(
-      "does not need a literal consolidation command",
+      "not offering gentle productivity advice",
     );
     expect(YAPBOT_INSTRUCTIONS).toContain("witty friend talking shit");
     expect(YAPBOT_INSTRUCTIONS).toContain(
@@ -616,7 +620,7 @@ describe("response decision tree and prompt context", () => {
     );
     expect(YAPBOT_INSTRUCTIONS).not.toContain("persona_callback");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("bundle the next");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v9");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v10");
   });
 });
 
@@ -692,43 +696,55 @@ describe("generated response validation", () => {
     ).toContain("missing_trigger_rationale");
     expect(
       validateGeneratedResponse(
-        "Your boss must love these updates. That posting sprint woke me up, so combine the next thought.",
+        "Your boss must love these updates. Three rapid yaps woke me up; cool it with the yapping and finish the next thought before posting.",
         { messageContent: "hello" },
       ),
     ).toContain("invented_persona_claim");
     expect(
       validateGeneratedResponse(
-        "Your boss must love these updates. That posting sprint woke me up, so combine the next thought.",
+        "Your boss must love these updates. Three rapid yaps woke me up; cool it with the yapping and finish the next thought before posting.",
         { messageContent: "hello", persona: "Recurring boss jokes." },
       ),
     ).not.toContain("invented_persona_claim");
     expect(
       validateGeneratedResponse(
-        "Your boss is really getting the live feed today. That posting sprint woke me up, so combine the next thought.",
+        "Your boss is really getting the live feed today. Three rapid yaps woke me up; cool it with the yapping and finish the next thought before posting.",
         { messageContent: "My boss just said this is fine." },
       ),
     ).not.toContain("invented_persona_claim");
   });
 
-  it("allows varied pacing nudges instead of requiring stock verbs", () => {
+  it("requires a blunt yap slowdown while allowing varied friend-tone phrasing", () => {
     expect(
       validateGeneratedResponse(
-        "Three updates for one thought is premium serialization. Three rapid posts called me in; maybe let the next thought finish getting dressed.",
+        "That threat assessment expanded by habitat. Three rapid dispatches summoned YapBot; let the next danger report arrive as one complete briefing.",
         { messageContent: "hello" },
       ),
     ).not.toContain("missing_trigger_rationale");
     expect(
       validateGeneratedResponse(
-        "Three updates for one thought is premium serialization. Your rapid posts are why I'm here; land the plane before opening another runway.",
+        "That threat assessment expanded by habitat. Three rapid dispatches summoned YapBot; let the next danger report arrive as one complete briefing.",
+        { messageContent: "hello" },
+      ),
+    ).toContain("missing_yap_slowdown");
+    expect(
+      validateGeneratedResponse(
+        "Three updates for one thought is premium serialization. Your rapid yapping is why I'm here; pump the brakes and land the plane before opening another runway.",
         { messageContent: "hello" },
       ),
     ).not.toContain("missing_trigger_rationale");
+    expect(
+      validateGeneratedResponse(
+        "Three updates for one thought is premium serialization. Your rapid yapping is why I'm here; pump the brakes and land the plane before opening another runway.",
+        { messageContent: "hello" },
+      ),
+    ).not.toContain("missing_yap_slowdown");
   });
 
   it("allows delivery wording when the member explicitly asks about a URL", () => {
     expect(
       validateGeneratedResponse(
-        "That URL points to a dog dressed for court. Your rapid gallery summoned me, so consolidate the next exhibit.",
+        "That URL points to a dog dressed for court. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         {
           images: [image("message-1")],
           messageContent: "@YapBot what is this URL?",

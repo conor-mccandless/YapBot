@@ -15,7 +15,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - Replies are posted in the configured channel containing the triggering message.
 - Optional administrator-managed persona for each individual user, including members of a monitored role.
 - Optional OpenAI text and image understanding using the latest threshold-sized set of qualifying messages, ordered oldest to newest, and up to three recent eligible images from the same member.
-- One compact two-sentence reply of no more than 45 words: a grounded answer or roast followed by an in-character explanation that the rapid posting triggered YapBot and the member should ease up on the yapping or consolidate.
+- One compact two-sentence reply of no more than 45 words: a grounded answer or roast followed by a blunt, in-character explanation that the rapid yaps triggered YapBot, the member should cool it with the yapping, and the next thought should arrive as one complete post.
 - PostgreSQL persistence for guild configuration, personas, quotas, audit metadata, and trigger metadata.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
@@ -459,7 +459,7 @@ When OpenAI is enabled, YapBot temporarily keeps the monitored member's qualifyi
 
 When a usable image is supplied and there is no direct address, its visible content becomes the primary joke target; YapBot still talks about it naturally rather than inventorying it merely to demonstrate vision. Image availability is explicitly represented as available, declared-but-unavailable, or absent. If an image is rejected or unavailable, YapBot continues using the ordered threshold message text without claiming it saw the visual. If both usable text and images are absent, it uses a static response.
 
-Completed model replies are checked for the two-sentence and length contract, a clear rapid-post trigger rationale, visual-delivery wording, and detectable ungrounded personal-history claims when no persona exists. The validator deliberately does not require stock slowdown verbs such as bundle, combine, or package. A failed check causes at most one focused correction request; a second invalid result uses a static response. Application logs include the attempt count and correction reason but never the generated reply text.
+Completed model replies are checked for the two-sentence and length contract, a clear rapid-yap trigger rationale, a direct yapping slowdown, visual-delivery wording, and detectable ungrounded personal-history claims when no persona exists. The slowdown check accepts varied friend-tone phrasing instead of requiring stock consolidation verbs such as bundle, combine, or package. A failed check causes at most one focused correction request; a second invalid result uses a static response. Application logs include the attempt count and correction reason but never the generated reply text.
 
 Inform test participants that the threshold-sized set of qualifying message text, relative timing between included messages, recent eligible images, source channel IDs, trigger counts, threshold information, and administrator-supplied personas may be transmitted to OpenAI. YapBot's local database retains:
 

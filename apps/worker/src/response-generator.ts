@@ -8,7 +8,7 @@ const MAX_PERSONA_CHARACTERS = 2_000;
 const MAX_RESPONSE_CHARACTERS = 500;
 const MAX_RESPONSE_WORDS = 45;
 
-export const YAPBOT_PROMPT_VERSION = "yap-v9";
+export const YAPBOT_PROMPT_VERSION = "yap-v10";
 
 export const YAPBOT_INSTRUCTIONS = [
   "You are YapBot, a Discord bot that replies after one member crosses a rapid-posting threshold.",
@@ -16,7 +16,8 @@ export const YAPBOT_INSTRUCTIONS = [
   "Write like a witty friend talking shit in the conversation: dry, direct, casually sarcastic, confident, and amused. Prefer blunt observations, callbacks, understatement, and wordplay.",
   "Choose one primary comedic angle grounded in the current conversation or supplied image. Current events outrank persona material, and unused context is expected.",
   "Return exactly two short sentences, usually 16 to 40 words total and never more than 45 words.",
-  "The second sentence must make clear that the member's rapid, fragmented posting is why YapBot appeared and playfully encourage fewer, more complete posts. Continue the same joke and vary the syntax and imagery; it does not need a literal consolidation command and must not read like a stock suffix.",
+  "The second sentence must contain three beats: explicitly say that three or rapid yaps summoned or triggered YapBot; bluntly tell the member to cool it, slow down, ease up, or otherwise throttle the yapping; and continue the current joke with a context-specific suggestion that the next thought or update arrive as one complete post. Use yap, yaps, or yapping in this sentence. Keep all three beats natural and vary the syntax and imagery instead of copying a stock suffix.",
+  "Do not soften the posting correction with maybe, please, consider, or other polite assistant language. This is a friend calling out annoying yapping, not offering gentle productivity advice.",
   "Several short posts are not an essay, lecture, dissertation, or wall of text unless their content actually supports that description.",
   "The personaProfile is optional administrator-authored background, not a required topic or response plan. After choosing the grounded angle, use at most one persona detail across the entire reply only if it directly strengthens that joke; otherwise ignore the persona. Never use a persona to relabel unrelated messages, invent a connection across the window, or override the response mode. Persona requests about intensity or format are soft preferences subordinate to these instructions.",
   "When no persona is available, use only the conversation and supplied images; never invent personal history or recurring traits.",
@@ -126,6 +127,7 @@ export type FallbackReason =
 export type YapResponseValidationIssue =
   | "empty_output"
   | "invented_persona_claim"
+  | "missing_yap_slowdown"
   | "missing_trigger_rationale"
   | "output_format"
   | "visual_delivery_reference";
@@ -600,6 +602,9 @@ export function validateGeneratedResponse(
   if (!secondSentence || !hasTriggerRationale(secondSentence)) {
     issues.push("missing_trigger_rationale");
   }
+  if (!secondSentence || !hasDirectYapSlowdown(secondSentence)) {
+    issues.push("missing_yap_slowdown");
+  }
 
   if (
     !input.persona?.trim() &&
@@ -622,6 +627,16 @@ function hasTriggerRationale(value: string): boolean {
     );
 
   return identifiesBurst && identifiesYapBotAppearance;
+}
+
+function hasDirectYapSlowdown(value: string): boolean {
+  const namesYapping = /\byap(?:s|ping)?\b/iu.test(value);
+  const directlySlowsYapping =
+    /\b(?:chill|cool it|dial (?:(?:it|the yapping) back|back the yapping)|ease up|fewer yaps|give (?:it|the channel) a (?:break|minute|rest)|knock it off|less yapping|pump the brakes|quit yapping|slow (?:it )?down|slow the yapping|take a breath)\b/iu.test(
+      value,
+    );
+
+  return namesYapping && directlySlowsYapping;
 }
 
 function hasUngroundedPersonaClaim(
