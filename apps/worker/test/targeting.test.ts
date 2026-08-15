@@ -14,6 +14,21 @@ describe("matchesConfiguredTarget", () => {
     expect(matchesConfiguredTarget(config, "user-2", () => false)).toBe(false);
   });
 
+  it("accepts any user confirmed by the monitored user list", () => {
+    const config = {
+      monitoredRoleId: null,
+      monitoredUserId: "user-1",
+      targetType: "user",
+    };
+
+    expect(matchesConfiguredTarget(config, "user-2", () => false, true)).toBe(
+      true,
+    );
+    expect(matchesConfiguredTarget(config, "user-1", () => false, false)).toBe(
+      false,
+    );
+  });
+
   it("matches membership in one configured role", () => {
     const config = {
       monitoredRoleId: "role-1",

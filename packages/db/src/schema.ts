@@ -91,6 +91,20 @@ export const guildChannel = pgTable(
   (table) => [primaryKey({ columns: [table.guildId, table.channelId] })],
 );
 
+export const guildMonitoredUser = pgTable(
+  "guild_monitored_user",
+  {
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    guildId: varchar("guild_id", { length: 20 })
+      .notNull()
+      .references(() => guildConfig.guildId, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 20 }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.userId] })],
+);
+
 export const userPersona = pgTable(
   "user_persona",
   {
@@ -150,6 +164,7 @@ export const schema = {
   adminAuditEvent,
   guildChannel,
   guildConfig,
+  guildMonitoredUser,
   llmDailyUsage,
   triggerEvent,
   userPersona,

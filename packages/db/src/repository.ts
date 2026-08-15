@@ -5,6 +5,7 @@ import {
   adminAuditEvent,
   guildChannel,
   guildConfig,
+  guildMonitoredUser,
   llmDailyUsage,
   triggerEvent,
   userPersona,
@@ -14,12 +15,23 @@ export type GuildConfig = typeof guildConfig.$inferSelect;
 export type UserPersona = typeof userPersona.$inferSelect;
 
 export const MAX_GUILD_CHANNELS = 25;
+export const MAX_GUILD_MONITORED_USERS = 25;
 
 export type AddGuildChannelResult =
   "added" | "already_exists" | "limit_reached" | "not_configured";
 
 export type RemoveGuildChannelResult =
   "last_channel" | "not_configured" | "not_found" | "removed";
+
+export type AddGuildMonitoredUserResult =
+  | "added"
+  | "already_exists"
+  | "limit_reached"
+  | "not_configured"
+  | "role_target";
+
+export type RemoveGuildMonitoredUserResult =
+  "last_user" | "not_configured" | "not_found" | "removed" | "role_target";
 
 export interface BehaviorUpdate {
   cooldownSeconds?: number;
@@ -48,6 +60,151 @@ export class YapBotRepository {
       .where(eq(guildChannel.guildId, guildId));
 
     return rows.map((row) => row.channelId);
+  }
+
+  async getGuildMonitoredUserIds(guildId: string): Promise<string[]> {
+    const rows = await this.connection.database
+      .select({ userId: guildMonitoredUser.userId })
+      .from(guildMonitoredUser)
+      .where(eq(guildMonitoredUser.guildId, guildId));
+
+    return rows.map((row) => row.userId);
+  }
+
+  async isGuildUserMonitored(
+    guildId: string,
+    userId: string,
+    legacyUserId?: string | null,
+  ): Promise<boolean> {
+    const row =
+      await this.connection.database.query.guildMonitoredUser.findFirst({
+        columns: { userId: true },
+        where: and(
+          eq(guildMonitoredUser.guildId, guildId),
+          eq(guildMonitoredUser.userId, userId),
+        ),
+      });
+
+    return row !== undefined || legacyUserId === userId;
+  }
+
+  async addGuildMonitoredUser(input: {
+    actorUserId: string;
+    guildId: string;
+    userId: string;
+  }): Promise<AddGuildMonitoredUserResult> {
+    return this.connection.database.transaction(async (transaction) => {
+      const [config] = await transaction
+        .select({
+          setupComplete: guildConfig.setupComplete,
+          targetType: guildConfig.targetType,
+        })
+        .from(guildConfig)
+        .where(eq(guildConfig.guildId, input.guildId));
+      if (!config?.setupComplete) {
+        return "not_configured";
+      }
+      if (config.targetType !== "user") {
+        return "role_target";
+      }
+
+      const [existing] = await transaction
+        .select({ userId: guildMonitoredUser.userId })
+        .from(guildMonitoredUser)
+        .where(
+          and(
+            eq(guildMonitoredUser.guildId, input.guildId),
+            eq(guildMonitoredUser.userId, input.userId),
+          ),
+        );
+      if (existing) {
+        return "already_exists";
+      }
+
+      const [userCount] = await transaction
+        .select({ value: count() })
+        .from(guildMonitoredUser)
+        .where(eq(guildMonitoredUser.guildId, input.guildId));
+      if ((userCount?.value ?? 0) >= MAX_GUILD_MONITORED_USERS) {
+        return "limit_reached";
+      }
+
+      await transaction.insert(guildMonitoredUser).values({
+        guildId: input.guildId,
+        userId: input.userId,
+      });
+      await transaction.insert(adminAuditEvent).values({
+        actorUserId: input.actorUserId,
+        change: { userId: input.userId },
+        commandName: "user-add",
+        guildId: input.guildId,
+      });
+
+      return "added";
+    });
+  }
+
+  async removeGuildMonitoredUser(input: {
+    actorUserId: string;
+    guildId: string;
+    userId: string;
+  }): Promise<RemoveGuildMonitoredUserResult> {
+    return this.connection.database.transaction(async (transaction) => {
+      const [config] = await transaction
+        .select({
+          monitoredUserId: guildConfig.monitoredUserId,
+          setupComplete: guildConfig.setupComplete,
+          targetType: guildConfig.targetType,
+        })
+        .from(guildConfig)
+        .where(eq(guildConfig.guildId, input.guildId));
+      if (!config?.setupComplete) {
+        return "not_configured";
+      }
+      if (config.targetType !== "user") {
+        return "role_target";
+      }
+
+      const users = await transaction
+        .select({ userId: guildMonitoredUser.userId })
+        .from(guildMonitoredUser)
+        .where(eq(guildMonitoredUser.guildId, input.guildId));
+      if (!users.some((user) => user.userId === input.userId)) {
+        return "not_found";
+      }
+      if (users.length === 1) {
+        return "last_user";
+      }
+
+      await transaction
+        .delete(guildMonitoredUser)
+        .where(
+          and(
+            eq(guildMonitoredUser.guildId, input.guildId),
+            eq(guildMonitoredUser.userId, input.userId),
+          ),
+        );
+
+      if (config.monitoredUserId === input.userId) {
+        const replacement = users.find((user) => user.userId !== input.userId);
+        await transaction
+          .update(guildConfig)
+          .set({
+            monitoredUserId: replacement?.userId,
+            updatedAt: new Date(),
+          })
+          .where(eq(guildConfig.guildId, input.guildId));
+      }
+
+      await transaction.insert(adminAuditEvent).values({
+        actorUserId: input.actorUserId,
+        change: { userId: input.userId },
+        commandName: "user-remove",
+        guildId: input.guildId,
+      });
+
+      return "removed";
+    });
   }
 
   async isGuildChannelAllowed(
@@ -298,6 +455,15 @@ export class YapBotRepository {
         channelId: input.channelId,
         guildId: input.guildId,
       });
+      await transaction
+        .delete(guildMonitoredUser)
+        .where(eq(guildMonitoredUser.guildId, input.guildId));
+      if (input.targetType === "user") {
+        await transaction.insert(guildMonitoredUser).values({
+          guildId: input.guildId,
+          userId: input.monitoredUserId,
+        });
+      }
       await transaction.insert(adminAuditEvent).values({
         actorUserId: input.actorUserId,
         change: {

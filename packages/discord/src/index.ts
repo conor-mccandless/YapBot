@@ -25,7 +25,7 @@ export const YAP_COMMAND = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName("setup")
-      .setDescription("Choose one monitored user or role and initial channel")
+      .setDescription("Choose an initial user-list member or role and channel")
       .addChannelOption((option) =>
         option
           .setName("channel")
@@ -72,6 +72,33 @@ export const YAP_COMMAND = new SlashCommandBuilder()
     subcommand
       .setName("channels")
       .setDescription("List the text channels YapBot monitors"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("user-add")
+      .setDescription("Add a user to YapBot's monitored user list")
+      .addUserOption((option) =>
+        option
+          .setName("user")
+          .setDescription("Human user whose messages YapBot should count")
+          .setRequired(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("user-remove")
+      .setDescription("Remove a user from YapBot's monitored user list")
+      .addUserOption((option) =>
+        option
+          .setName("user")
+          .setDescription("Monitored user to remove")
+          .setRequired(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("users")
+      .setDescription("List individually monitored users"),
   )
   .addSubcommand((subcommand) =>
     subcommand

@@ -8,9 +8,10 @@ export function matchesConfiguredTarget(
   config: TargetConfiguration,
   authorId: string,
   authorHasRole: (roleId: string) => boolean,
+  authorIsListedUser = config.monitoredUserId === authorId,
 ): boolean {
   if (config.targetType === "user") {
-    return config.monitoredUserId === authorId;
+    return authorIsListedUser;
   }
 
   if (config.targetType === "role" && config.monitoredRoleId) {

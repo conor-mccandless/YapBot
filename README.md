@@ -1,6 +1,6 @@
 # YapBot
 
-YapBot is a private-beta Discord bot that watches one configured user or role across one or more configured standard text channels. When a matching member reaches a rolling message threshold, YapBot posts a dry, context-aware anti-yap reply in the channel that triggered it.
+YapBot is a private-beta Discord bot that watches either a configured user list or one role across one or more configured standard text channels. When a matching member reaches a rolling message threshold, YapBot posts a dry, context-aware anti-yap reply in the channel that triggered it.
 
 OpenAI generation is optional. With an API key, YapBot can use the complete ordered threshold-sized message context, recent eligible images, trigger metadata, and a per-user persona to generate its reply. Without an API key—or when generation fails or reaches its daily limit—it uses a built-in static response pool.
 
@@ -8,7 +8,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 
 ## Current behavior
 
-- One monitored target per Discord server: either one role or one specific user.
+- One monitored target mode per Discord server: either one role or up to 25 individually selected users.
 - Between 1 and 25 monitored standard text channels per server.
 - Independent rolling counters and cooldowns per member.
 - Counts are shared across configured channels. Two messages in one configured channel and one in another can satisfy a threshold of three.
@@ -343,6 +343,14 @@ The server owner or a member with **Manage Server** can run administrative comma
    /yap setup channel:#general user:@TestUser
    ```
 
+   Individual-user setup initializes the list with that user. Add more without rerunning setup:
+
+   ```text
+   /yap user-add user:@SecondUser
+   /yap user-add user:@ThirdUser
+   /yap users
+   ```
+
 3. Add additional standard text channels:
 
    ```text
@@ -375,7 +383,7 @@ The server owner or a member with **Manage Server** can run administrative comma
 9. Repeat with a second user to verify that counters, cooldowns, and personas are user-specific.
 10. Send messages from a user outside the role and in an unconfigured channel; both should be ignored.
 
-Running `/yap setup` again replaces the target and entire channel list with the new initial channel, disables monitoring, and clears in-memory runtime state. Add the desired channels again before running `/yap enable`.
+Running `/yap setup` again replaces the target, individually monitored user list, and entire channel list with the new initial selection, disables monitoring, and clears in-memory runtime state. Add the desired users and channels again before running `/yap enable`. Normal `/yap user-add` and `/yap user-remove` changes do not disable monitoring or reset the channel list.
 
 ## Slash-command reference
 
@@ -384,7 +392,7 @@ Running `/yap setup` again replaces the target and entire channel list with the 
 | Command                                  | Permission             | Behavior                                                                                                                                             |
 | ---------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/yap setup channel:#channel role:@role` | Owner or Manage Server | Watches the selected role in the initial text channel. Replaces previous setup, resets the channel list, and leaves monitoring disabled.             |
-| `/yap setup channel:#channel user:@user` | Owner or Manage Server | Watches one human user instead of a role. Exactly one of `role` or `user` must be supplied.                                                          |
+| `/yap setup channel:#channel user:@user` | Owner or Manage Server | Starts an individual-user list with one human user. Exactly one of `role` or `user` must be supplied.                                                |
 | `/yap status`                            | Any server member      | Shows enabled state, target, all monitored channels, threshold, window, cooldown, mention behavior, daily trigger count, and permission diagnostics. |
 | `/yap enable`                            | Owner or Manage Server | Validates bot permissions in every configured channel, enables monitoring, and clears runtime counters.                                              |
 | `/yap disable`                           | Owner or Manage Server | Stops monitoring immediately and clears runtime counters. Stored setup and personas remain.                                                          |
@@ -398,6 +406,18 @@ Running `/yap setup` again replaces the target and entire channel list with the 
 | `/yap channels`                        | Any server member      | Lists all monitored text channels and the current count.                                                        |
 
 Adding or removing a channel clears current rolling counters, cooldowns, recent in-memory message text, and image references. It does not disable monitoring.
+
+### Individual user management
+
+These commands apply when setup uses a user target. They update the monitored list without replacing channels or disabling monitoring.
+
+| Command                       | Permission             | Behavior                                                                                           |
+| ----------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `/yap user-add user:@user`    | Owner or Manage Server | Adds a human user to the monitored list. Maximum: 25.                                              |
+| `/yap user-remove user:@user` | Owner or Manage Server | Removes a monitored user. The final remaining user cannot be removed.                              |
+| `/yap users`                  | Any server member      | Lists individually monitored users, or explains that the server is currently using role targeting. |
+
+Adding or removing a monitored user clears current in-memory counters, cooldowns, message text, and image references for that server. Each monitored user still has an independent counter and cooldown.
 
 ### Trigger behavior
 

@@ -35,4 +35,24 @@ describe("YAP_COMMAND_JSON", () => {
     expect(description?.min_length).toBe(1);
     expect(description?.max_length).toBe(2_000);
   });
+
+  it("exposes individual user-list management commands", () => {
+    const subcommands = YAP_COMMAND_JSON.options ?? [];
+    const names = subcommands.map((option) => option.name);
+
+    expect(names).toContain("user-add");
+    expect(names).toContain("user-remove");
+    expect(names).toContain("users");
+
+    for (const subcommandName of ["user-add", "user-remove"]) {
+      const subcommand = subcommands.find(
+        (option) => option.name === subcommandName,
+      );
+      const userOption = subcommand?.options?.find(
+        (option) => option.name === "user",
+      );
+
+      expect(userOption?.required).toBe(true);
+    }
+  });
 });

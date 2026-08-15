@@ -164,13 +164,24 @@ export async function startWorker(
               message.channelId,
             )
           : false);
+      if (!config?.enabled || !channelAllowed) {
+        return;
+      }
+
+      const userTargetMatch =
+        config.targetType === "user"
+          ? await repository.isGuildUserMonitored(
+              message.guildId,
+              message.author.id,
+              config.monitoredUserId,
+            )
+          : false;
       if (
-        !config?.enabled ||
-        !channelAllowed ||
         !matchesConfiguredTarget(
           config,
           message.author.id,
           (roleId) => message.member?.roles.cache.has(roleId) ?? false,
+          userTargetMatch,
         )
       ) {
         return;
