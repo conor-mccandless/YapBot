@@ -732,13 +732,7 @@ describe("buildOpenAIContent", () => {
 });
 
 describe("generated response validation", () => {
-  it("checks trigger rationale and invented biography only when detectable", () => {
-    expect(
-      validateGeneratedResponse(
-        "Three posts for one thought is premium serialization. Keep doing exactly that forever.",
-        { messageContent: "hello" },
-      ),
-    ).toContain("missing_trigger_rationale");
+  it("checks invented biography only when detectable", () => {
     expect(
       validateGeneratedResponse(
         "Your boss must love these updates. Three rapid yaps woke me up; cool it with the yapping and finish the next thought before posting.",
@@ -765,19 +759,7 @@ describe("generated response validation", () => {
         "That threat assessment expanded by habitat. Three rapid dispatches summoned YapBot; let the next danger report arrive as one complete briefing.",
         { messageContent: "hello" },
       ),
-    ).not.toContain("missing_trigger_rationale");
-    expect(
-      validateGeneratedResponse(
-        "That threat assessment expanded by habitat. Three rapid dispatches summoned YapBot; let the next danger report arrive as one complete briefing.",
-        { messageContent: "hello" },
-      ),
     ).toContain("missing_yap_slowdown");
-    expect(
-      validateGeneratedResponse(
-        "Three updates for one thought is premium serialization. Your rapid yapping is why I'm here; pump the brakes and land the plane before opening another runway.",
-        { messageContent: "hello" },
-      ),
-    ).not.toContain("missing_trigger_rationale");
     expect(
       validateGeneratedResponse(
         "Three updates for one thought is premium serialization. Your rapid yapping is why I'm here; pump the brakes and land the plane before opening another runway.",
@@ -809,6 +791,19 @@ describe("generated response validation", () => {
         { messageContent: "hello" },
       ),
     ).toContain("missing_yap_slowdown");
+  });
+
+  it("accepts natural slowdown conjugations without requiring an appearance rationale", () => {
+    const acceptableReplies = [
+      "That coat of arms really said balls three times, then hired a herald to draw the receipts. Three quick yaps summoned the court; stop broadcasting and bring the next decree as one complete post.",
+      "Three balls on a coat of arms and you still needed a two-part press conference. Stop yapping; return with one complete heraldic briefing once the giggling ends.",
+    ];
+
+    for (const reply of acceptableReplies) {
+      expect(
+        validateGeneratedResponse(reply, { messageContent: "hello" }),
+      ).toEqual([]);
+    }
   });
 
   it("allows delivery wording when the member explicitly asks about a URL", () => {

@@ -140,7 +140,6 @@ export type YapResponseValidationIssue =
   | "empty_output"
   | "invented_persona_claim"
   | "missing_yap_slowdown"
-  | "missing_trigger_rationale"
   | "output_format"
   | "visual_delivery_reference";
 
@@ -660,9 +659,6 @@ export function validateGeneratedResponse(
     issues.push("visual_delivery_reference");
   }
 
-  if (!hasTriggerRationale(value)) {
-    issues.push("missing_trigger_rationale");
-  }
   if (!hasYapBranding(value) || !hasDirectSlowdown(value)) {
     issues.push("missing_yap_slowdown");
   }
@@ -677,19 +673,6 @@ export function validateGeneratedResponse(
   return issues;
 }
 
-function hasTriggerRationale(value: string): boolean {
-  const identifiesBurst =
-    /\b(?:back-to-back|burst|dispatches?|installments?|messages?|multiple|posts?|posting|rapid(?:-fire)?|rollout|sequence|several|third|three(?:-message)?|trailers?|transmissions?|updates?|yaps?)\b/iu.test(
-      value,
-    );
-  const identifiesYapBotAppearance =
-    /\b(?:activated|alarm|appeared|brought (?:me|yapbot)|called (?:me|yapbot)|dragged (?:me|yapbot)|drew me in|forced me in|got (?:me|yapbot) involved|got me|i (?:arrived|did too|got involved|showed up)|i(?:'m| am) here|put me on|rang|set off|summoned|tripped|triggered|woke me|why (?:i(?:'m| am)|yapbot is) here)\b/iu.test(
-      value,
-    );
-
-  return identifiesBurst && identifiesYapBotAppearance;
-}
-
 function hasYapBranding(value: string): boolean {
   return /\byap(?:s|ping)?\b/iu.test(value);
 }
@@ -698,7 +681,7 @@ function hasDirectSlowdown(value: string): boolean {
   const directCommands = [
     /\b(?:chill|cool it|cut it out|ease up|knock it off|pump the brakes|quit it|stop it|take a breath)\b/iu,
     /\b(?:dial|slow)\b.{0,16}\b(?:back|down|yapping)\b/iu,
-    /\b(?:close|cut|mute|park|quit|stop|throttle)\b.{0,24}\b(?:broadcast|chatter|feed|posts?|posting|updates?|yaps?|yapping)\b/iu,
+    /\b(?:close|cut|mute|park|quit|stop|throttle)\b.{0,24}\b(?:broadcast(?:ed|ing|s)?|chatter(?:ed|ing|s)?|feed(?:ing|s)?|post(?:ed|ing|s)?|updat(?:e|ed|es|ing)|yap(?:ped|ping|s)?)\b/iu,
     /\b(?:hold|save)\b.{0,16}\b(?:it|next one|next trailer|next update)\b/iu,
     /\b(?:fewer yaps|less yapping)\b/iu,
     /\bgive\b.{0,16}\b(?:break|minute|rest)\b/iu,
