@@ -75,6 +75,7 @@ export async function startWorker(
         approvedGuildCount: environment.ALLOWED_GUILD_IDS.length,
         botUserId: readyClient.user.id,
         openAIEnabled: responseGenerator.openAIConfigured,
+        promptDiagnosticsEnabled: environment.OPENAI_LOG_PROMPT_DIAGNOSTICS,
         rejectedResponseDiagnosticsEnabled:
           environment.OPENAI_LOG_REJECTED_RESPONSES,
       },
@@ -327,6 +328,19 @@ export async function startWorker(
             windowSeconds: config.windowSeconds,
           },
           recentMessages,
+          environment.OPENAI_LOG_PROMPT_DIAGNOSTICS
+            ? (diagnostic) =>
+                logger.info(
+                  {
+                    attempt: diagnostic.attempt,
+                    guildId: message.guildId,
+                    imageCount: diagnostic.imageCount,
+                    inputText: diagnostic.inputText,
+                    instructions: diagnostic.instructions,
+                  },
+                  "Captured OpenAI prompt diagnostic",
+                )
+            : undefined,
         );
         for (const diagnostic of generated.openAIMetadata
           ?.responseDiagnostics ?? []) {

@@ -274,6 +274,7 @@ describe("YapResponseGenerator", () => {
           "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       );
+    const promptDiagnostic = vi.fn();
     const generator = new YapResponseGenerator(request, () => "fallback", true);
     const images = [image("message-1")];
     const messageContext = [
@@ -290,6 +291,7 @@ describe("YapResponseGenerator", () => {
         images,
         undefined,
         messageContext,
+        promptDiagnostic,
       ),
     ).resolves.toEqual({
       content:
@@ -324,6 +326,19 @@ describe("YapResponseGenerator", () => {
     expect(buildOpenAIInput(request.mock.calls[1]?.[0])).toContain(
       "CORRECTION RETRY",
     );
+    expect(promptDiagnostic).toHaveBeenCalledTimes(2);
+    expect(promptDiagnostic.mock.calls[0]?.[0]).toMatchObject({
+      attempt: "initial",
+      imageCount: 1,
+      inputText: expect.stringContaining("RESPONSE MODE visual_post"),
+      instructions: YAPBOT_INSTRUCTIONS,
+    });
+    expect(promptDiagnostic.mock.calls[1]?.[0]).toMatchObject({
+      attempt: "correction",
+      imageCount: 1,
+      inputText: expect.stringContaining("CORRECTION RETRY"),
+      instructions: YAPBOT_INSTRUCTIONS,
+    });
   });
 
   it("stops after one correction and fails closed if it remains invalid", async () => {
@@ -843,5 +858,15 @@ describe("generated response validation", () => {
         `${Array.from({ length: 46 }, (_, index) => `word${index + 1}`).join(" ")}. Final sentence.`,
       ),
     ).toBe(false);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "That side-eye says the cloaked guy already regrets your “or else.” Quit yapping in threat trailers; bring the next royal warning as one complete decree.",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "That side-eye says the cloaked guy already heard your “or else.” Stop yapping in cliffhangers; three rapid posts summoned me, so bring the whole threat next time.",
+      ),
+    ).toBe(true);
   });
 });

@@ -141,6 +141,7 @@ ALLOWED_GUILD_IDS=replace-with-test-server-id
 OPENAI_API_KEY=replace-with-openai-project-api-key
 OPENAI_MODEL=gpt-5.6-luna
 OPENAI_IMAGE_MODEL=
+OPENAI_LOG_PROMPT_DIAGNOSTICS=false
 OPENAI_LOG_REJECTED_RESPONSES=false
 OPENAI_REASONING_EFFORT=low
 OPENAI_DAILY_GUILD_LIMIT=100
@@ -162,6 +163,7 @@ NODE_ENV=development
 | `OPENAI_API_KEY`                | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                |
 | `OPENAI_MODEL`                  | With OpenAI | Model for text-only and, by default, image-bearing requests.                                         |
 | `OPENAI_IMAGE_MODEL`            | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                   |
+| `OPENAI_LOG_PROMPT_DIAGNOSTICS` | No          | Logs system instructions and structured text input without image bytes; default is `false`.          |
 | `OPENAI_LOG_REJECTED_RESPONSES` | No          | Logs rejected initial model output and its correction attempt for prompt tuning; default is `false`. |
 | `OPENAI_REASONING_EFFORT`       | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `low`.                                |
 | `OPENAI_DAILY_GUILD_LIMIT`      | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.          |

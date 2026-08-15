@@ -102,6 +102,13 @@ export interface OpenAIResponseDiagnostic {
   validationIssues?: readonly YapResponseValidationIssue[];
 }
 
+export interface OpenAIPromptDiagnostic {
+  attempt: "initial" | "correction";
+  imageCount: number;
+  inputText: string;
+  instructions: string;
+}
+
 export interface OpenAITextResult extends OpenAIResponseMetadata {
   text: string;
 }
@@ -229,6 +236,7 @@ export class YapResponseGenerator {
     images: readonly YapImageContext[] = [],
     trigger?: YapTriggerContext,
     messageContext: readonly YapMessageContext[] = [],
+    promptDiagnostic?: (diagnostic: OpenAIPromptDiagnostic) => void,
   ): Promise<GeneratedResponse> {
     const trimmedInput = messageContent.trim();
     const hasMessageContext = messageContext.some(
@@ -256,6 +264,7 @@ export class YapResponseGenerator {
         ...(messageContext.length > 0 ? { messageContext } : {}),
         ...(trigger ? { trigger } : {}),
       };
+      this.emitPromptDiagnostic(requestInput, promptDiagnostic);
       const result = await this.openAIRequest(requestInput);
       const firstMetadata = extractOpenAIMetadata(result);
       if (result.status !== "completed") {
@@ -277,10 +286,12 @@ export class YapResponseGenerator {
         };
       }
 
-      const retryResult = await this.openAIRequest({
+      const retryInput: OpenAITextInput = {
         ...requestInput,
         correction: { failedChecks: validationIssues },
-      });
+      };
+      this.emitPromptDiagnostic(retryInput, promptDiagnostic);
+      const retryResult = await this.openAIRequest(retryInput);
       let openAIMetadata = mergeOpenAIMetadata(
         firstMetadata,
         extractOpenAIMetadata(retryResult),
@@ -336,6 +347,18 @@ export class YapResponseGenerator {
       ...(openAIMetadata ? { openAIMetadata } : {}),
       source: "static",
     };
+  }
+
+  private emitPromptDiagnostic(
+    input: OpenAITextInput,
+    promptDiagnostic?: (diagnostic: OpenAIPromptDiagnostic) => void,
+  ): void {
+    promptDiagnostic?.({
+      attempt: input.correction ? "correction" : "initial",
+      imageCount: input.images?.length ?? 0,
+      inputText: buildOpenAIInput(input),
+      instructions: YAPBOT_INSTRUCTIONS,
+    });
   }
 
   private withResponseDiagnostics(
@@ -624,7 +647,9 @@ export function sanitizeGeneratedResponse(value: string): string {
 
 export function isGeneratedResponseWithinLimits(value: string): boolean {
   const wordCount = value.split(/\s+/).filter(Boolean).length;
-  const sentenceCount = value.match(/[.!?]+(?=\s|$)/g)?.length ?? 0;
+  const sentenceCount =
+    value.match(/[.!?]+(?:["'\u2019\u201d\u00bb)\]}]+)?(?=\s|$)/gu)?.length ??
+    0;
   return (
     value.length <= MAX_RESPONSE_CHARACTERS &&
     wordCount <= MAX_RESPONSE_WORDS &&
