@@ -121,7 +121,10 @@ export function normalizeYapBotMention(
 }
 
 export function directlyAddressesYapBot(content: string): boolean {
-  return /(?:^|\s)@YapBot\b/iu.test(content);
+  return (
+    /(?:^|\s)@YapBot\b/iu.test(content) ||
+    /^\s*(?:hey[\s,]+)?YapBot\b/iu.test(content)
+  );
 }
 
 export function directlyMentionsYapBotRole(

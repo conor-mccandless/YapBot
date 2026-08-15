@@ -652,12 +652,15 @@ describe("response decision tree and prompt context", () => {
     );
   });
 
-  it("defines the v11 varied blunt anti-yap output contract", () => {
+  it("defines the v12 varied contextual anti-yap output contract", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain("exactly two short sentences");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "YapBot appeared because this member fired off several messages quickly",
     );
     expect(YAPBOT_INSTRUCTIONS).toContain("blunt anti-yapping command");
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "command may target a contextual metaphor",
+    );
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "Use yap, yaps, or yapping somewhere in the reply",
     );
@@ -680,7 +683,7 @@ describe("response decision tree and prompt context", () => {
     );
     expect(YAPBOT_INSTRUCTIONS).not.toContain("persona_callback");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("bundle the next");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v11");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v12");
   });
 });
 
@@ -812,6 +815,7 @@ describe("generated response validation", () => {
     const acceptableReplies = [
       "That coat of arms really said balls three times, then hired a herald to draw the receipts. Three quick yaps summoned the court; stop broadcasting and bring the next decree as one complete post.",
       "Three balls on a coat of arms and you still needed a two-part press conference. Stop yapping; return with one complete heraldic briefing once the giggling ends.",
+      "That side-eye says the cape already knows this is you. Three yaps summoned me, so stop the trailer drops and bring the next medieval identity crisis as one complete post.",
     ];
 
     for (const reply of acceptableReplies) {

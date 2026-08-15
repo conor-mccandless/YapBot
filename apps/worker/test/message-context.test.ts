@@ -22,6 +22,8 @@ describe("normalizeYapBotMention", () => {
     expect(directlyAddressesYapBot("@YapBot do you understand this?")).toBe(
       true,
     );
+    expect(directlyAddressesYapBot("Yapbot is this you")).toBe(true);
+    expect(directlyAddressesYapBot("Hey, YapBot, are you there?")).toBe(true);
     expect(directlyAddressesYapBot("a screenshot containing YapBot text")).toBe(
       false,
     );
