@@ -55,4 +55,24 @@ describe("YAP_COMMAND_JSON", () => {
       expect(userOption?.required).toBe(true);
     }
   });
+
+  it("exposes monitored role-list management commands", () => {
+    const subcommands = YAP_COMMAND_JSON.options ?? [];
+    const names = subcommands.map((option) => option.name);
+
+    expect(names).toContain("role-add");
+    expect(names).toContain("role-remove");
+    expect(names).toContain("roles");
+
+    for (const subcommandName of ["role-add", "role-remove"]) {
+      const subcommand = subcommands.find(
+        (option) => option.name === subcommandName,
+      );
+      const roleOption = subcommand?.options?.find(
+        (option) => option.name === "role",
+      );
+
+      expect(roleOption?.required).toBe(true);
+    }
+  });
 });

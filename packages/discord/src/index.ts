@@ -102,6 +102,31 @@ export const YAP_COMMAND = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName("role-add")
+      .setDescription("Add a role to YapBot's monitored role list")
+      .addRoleOption((option) =>
+        option
+          .setName("role")
+          .setDescription("Role whose members YapBot should count")
+          .setRequired(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("role-remove")
+      .setDescription("Remove a role from YapBot's monitored role list")
+      .addRoleOption((option) =>
+        option
+          .setName("role")
+          .setDescription("Monitored role to remove")
+          .setRequired(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName("roles").setDescription("List monitored roles"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName("configure")
       .setDescription("Update threshold, window, cooldown, or ping behavior")
       .addIntegerOption((option) =>

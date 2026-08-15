@@ -5,6 +5,7 @@ import {
   adminAuditEvent,
   guildChannel,
   guildConfig,
+  guildMonitoredRole,
   guildMonitoredUser,
   llmDailyUsage,
   triggerEvent,
@@ -15,6 +16,7 @@ export type GuildConfig = typeof guildConfig.$inferSelect;
 export type UserPersona = typeof userPersona.$inferSelect;
 
 export const MAX_GUILD_CHANNELS = 25;
+export const MAX_GUILD_MONITORED_ROLES = 25;
 export const MAX_GUILD_MONITORED_USERS = 25;
 
 export type AddGuildChannelResult =
@@ -24,14 +26,16 @@ export type RemoveGuildChannelResult =
   "last_channel" | "not_configured" | "not_found" | "removed";
 
 export type AddGuildMonitoredUserResult =
-  | "added"
-  | "already_exists"
-  | "limit_reached"
-  | "not_configured"
-  | "role_target";
+  "added" | "already_exists" | "limit_reached" | "not_configured";
 
 export type RemoveGuildMonitoredUserResult =
-  "last_user" | "not_configured" | "not_found" | "removed" | "role_target";
+  "last_target" | "not_configured" | "not_found" | "removed";
+
+export type AddGuildMonitoredRoleResult =
+  "added" | "already_exists" | "limit_reached" | "not_configured";
+
+export type RemoveGuildMonitoredRoleResult =
+  "last_target" | "not_configured" | "not_found" | "removed";
 
 export interface BehaviorUpdate {
   cooldownSeconds?: number;
@@ -71,6 +75,15 @@ export class YapBotRepository {
     return rows.map((row) => row.userId);
   }
 
+  async getGuildMonitoredRoleIds(guildId: string): Promise<string[]> {
+    const rows = await this.connection.database
+      .select({ roleId: guildMonitoredRole.roleId })
+      .from(guildMonitoredRole)
+      .where(eq(guildMonitoredRole.guildId, guildId));
+
+    return rows.map((row) => row.roleId);
+  }
+
   async isGuildUserMonitored(
     guildId: string,
     userId: string,
@@ -95,17 +108,11 @@ export class YapBotRepository {
   }): Promise<AddGuildMonitoredUserResult> {
     return this.connection.database.transaction(async (transaction) => {
       const [config] = await transaction
-        .select({
-          setupComplete: guildConfig.setupComplete,
-          targetType: guildConfig.targetType,
-        })
+        .select({ setupComplete: guildConfig.setupComplete })
         .from(guildConfig)
         .where(eq(guildConfig.guildId, input.guildId));
       if (!config?.setupComplete) {
         return "not_configured";
-      }
-      if (config.targetType !== "user") {
-        return "role_target";
       }
 
       const [existing] = await transaction
@@ -152,28 +159,29 @@ export class YapBotRepository {
     return this.connection.database.transaction(async (transaction) => {
       const [config] = await transaction
         .select({
+          monitoredRoleId: guildConfig.monitoredRoleId,
           monitoredUserId: guildConfig.monitoredUserId,
           setupComplete: guildConfig.setupComplete,
-          targetType: guildConfig.targetType,
         })
         .from(guildConfig)
         .where(eq(guildConfig.guildId, input.guildId));
       if (!config?.setupComplete) {
         return "not_configured";
       }
-      if (config.targetType !== "user") {
-        return "role_target";
-      }
 
       const users = await transaction
         .select({ userId: guildMonitoredUser.userId })
         .from(guildMonitoredUser)
         .where(eq(guildMonitoredUser.guildId, input.guildId));
+      const roles = await transaction
+        .select({ roleId: guildMonitoredRole.roleId })
+        .from(guildMonitoredRole)
+        .where(eq(guildMonitoredRole.guildId, input.guildId));
       if (!users.some((user) => user.userId === input.userId)) {
         return "not_found";
       }
-      if (users.length === 1) {
-        return "last_user";
+      if (users.length === 1 && roles.length === 0) {
+        return "last_target";
       }
 
       await transaction
@@ -187,10 +195,13 @@ export class YapBotRepository {
 
       if (config.monitoredUserId === input.userId) {
         const replacement = users.find((user) => user.userId !== input.userId);
+        const replacementRole = roles[0];
         await transaction
           .update(guildConfig)
           .set({
-            monitoredUserId: replacement?.userId,
+            monitoredRoleId: replacement ? null : replacementRole?.roleId,
+            monitoredUserId: replacement?.userId ?? null,
+            targetType: replacement ? "user" : "role",
             updatedAt: new Date(),
           })
           .where(eq(guildConfig.guildId, input.guildId));
@@ -200,6 +211,123 @@ export class YapBotRepository {
         actorUserId: input.actorUserId,
         change: { userId: input.userId },
         commandName: "user-remove",
+        guildId: input.guildId,
+      });
+
+      return "removed";
+    });
+  }
+
+  async addGuildMonitoredRole(input: {
+    actorUserId: string;
+    guildId: string;
+    roleId: string;
+  }): Promise<AddGuildMonitoredRoleResult> {
+    return this.connection.database.transaction(async (transaction) => {
+      const [config] = await transaction
+        .select({ setupComplete: guildConfig.setupComplete })
+        .from(guildConfig)
+        .where(eq(guildConfig.guildId, input.guildId));
+      if (!config?.setupComplete) {
+        return "not_configured";
+      }
+
+      const [existing] = await transaction
+        .select({ roleId: guildMonitoredRole.roleId })
+        .from(guildMonitoredRole)
+        .where(
+          and(
+            eq(guildMonitoredRole.guildId, input.guildId),
+            eq(guildMonitoredRole.roleId, input.roleId),
+          ),
+        );
+      if (existing) {
+        return "already_exists";
+      }
+
+      const [roleCount] = await transaction
+        .select({ value: count() })
+        .from(guildMonitoredRole)
+        .where(eq(guildMonitoredRole.guildId, input.guildId));
+      if ((roleCount?.value ?? 0) >= MAX_GUILD_MONITORED_ROLES) {
+        return "limit_reached";
+      }
+
+      await transaction.insert(guildMonitoredRole).values({
+        guildId: input.guildId,
+        roleId: input.roleId,
+      });
+      await transaction.insert(adminAuditEvent).values({
+        actorUserId: input.actorUserId,
+        change: { roleId: input.roleId },
+        commandName: "role-add",
+        guildId: input.guildId,
+      });
+
+      return "added";
+    });
+  }
+
+  async removeGuildMonitoredRole(input: {
+    actorUserId: string;
+    guildId: string;
+    roleId: string;
+  }): Promise<RemoveGuildMonitoredRoleResult> {
+    return this.connection.database.transaction(async (transaction) => {
+      const [config] = await transaction
+        .select({
+          monitoredRoleId: guildConfig.monitoredRoleId,
+          monitoredUserId: guildConfig.monitoredUserId,
+          setupComplete: guildConfig.setupComplete,
+        })
+        .from(guildConfig)
+        .where(eq(guildConfig.guildId, input.guildId));
+      if (!config?.setupComplete) {
+        return "not_configured";
+      }
+
+      const roles = await transaction
+        .select({ roleId: guildMonitoredRole.roleId })
+        .from(guildMonitoredRole)
+        .where(eq(guildMonitoredRole.guildId, input.guildId));
+      const users = await transaction
+        .select({ userId: guildMonitoredUser.userId })
+        .from(guildMonitoredUser)
+        .where(eq(guildMonitoredUser.guildId, input.guildId));
+      if (!roles.some((role) => role.roleId === input.roleId)) {
+        return "not_found";
+      }
+      if (roles.length === 1 && users.length === 0) {
+        return "last_target";
+      }
+
+      await transaction
+        .delete(guildMonitoredRole)
+        .where(
+          and(
+            eq(guildMonitoredRole.guildId, input.guildId),
+            eq(guildMonitoredRole.roleId, input.roleId),
+          ),
+        );
+
+      if (config.monitoredRoleId === input.roleId) {
+        const replacement = roles.find((role) => role.roleId !== input.roleId);
+        const replacementUser = users[0];
+        await transaction
+          .update(guildConfig)
+          .set({
+            monitoredRoleId: replacement?.roleId ?? null,
+            monitoredUserId: replacement ? null : replacementUser?.userId,
+            targetType: replacement ? "role" : "user",
+            updatedAt: new Date(),
+          })
+          .where(eq(guildConfig.guildId, input.guildId));
+      }
+
+      await transaction.insert(adminAuditEvent).values({
+        actorUserId: input.actorUserId,
+        change: { roleId: input.roleId },
+        commandName: "role-remove",
         guildId: input.guildId,
       });
 
@@ -458,10 +586,18 @@ export class YapBotRepository {
       await transaction
         .delete(guildMonitoredUser)
         .where(eq(guildMonitoredUser.guildId, input.guildId));
+      await transaction
+        .delete(guildMonitoredRole)
+        .where(eq(guildMonitoredRole.guildId, input.guildId));
       if (input.targetType === "user") {
         await transaction.insert(guildMonitoredUser).values({
           guildId: input.guildId,
           userId: input.monitoredUserId,
+        });
+      } else {
+        await transaction.insert(guildMonitoredRole).values({
+          guildId: input.guildId,
+          roleId: input.monitoredRoleId,
         });
       }
       await transaction.insert(adminAuditEvent).values({

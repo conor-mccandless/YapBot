@@ -1,5 +1,6 @@
 import {
   MAX_GUILD_CHANNELS,
+  MAX_GUILD_MONITORED_ROLES,
   MAX_GUILD_MONITORED_USERS,
   type YapBotRepository,
 } from "@yapbot/db";
@@ -18,6 +19,8 @@ const ADMIN_SUBCOMMANDS = new Set([
   "channel-remove",
   "user-add",
   "user-remove",
+  "role-add",
+  "role-remove",
   "configure",
   "enable",
   "disable",
@@ -77,6 +80,15 @@ export async function handleYapCommand(
       break;
     case "users":
       await handleUsers(interaction, context);
+      break;
+    case "role-add":
+      await handleRoleAdd(interaction, context);
+      break;
+    case "role-remove":
+      await handleRoleRemove(interaction, context);
+      break;
+    case "roles":
+      await handleRoles(interaction, context);
       break;
     case "configure":
       await handleConfigure(interaction, context);
@@ -223,12 +235,6 @@ async function handleUserAdd(
     );
     return;
   }
-  if (result === "role_target") {
-    await interaction.editReply(
-      "This server targets a role. Manage that role's membership in Discord, or run `/yap setup` with a user to switch to an individual user list.",
-    );
-    return;
-  }
   if (result === "already_exists") {
     await interaction.editReply(`${user.toString()} is already monitored.`);
     return;
@@ -262,19 +268,13 @@ async function handleUserRemove(
     );
     return;
   }
-  if (result === "role_target") {
-    await interaction.editReply(
-      "This server targets a role. Manage that role's membership in Discord instead.",
-    );
-    return;
-  }
   if (result === "not_found") {
     await interaction.editReply(`${user.toString()} is not monitored.`);
     return;
   }
-  if (result === "last_user") {
+  if (result === "last_target") {
     await interaction.editReply(
-      "YapBot must retain at least one monitored user. Add another user first, switch to a role with `/yap setup`, or use `/yap disable`.",
+      "YapBot must retain at least one monitored user or role. Add another target first, or use `/yap disable`.",
     );
     return;
   }
@@ -296,13 +296,6 @@ async function handleUsers(
     );
     return;
   }
-  if (config.targetType === "role") {
-    await interaction.editReply(
-      `YapBot currently monitors role <@&${config.monitoredRoleId}>. Manage its members through Discord.`,
-    );
-    return;
-  }
-
   const userIds = await getConfiguredMonitoredUserIds(
     context.repository,
     interaction.guildId,
@@ -310,6 +303,99 @@ async function handleUsers(
   );
   await interaction.editReply(
     `**Monitored users (${userIds.length}/${MAX_GUILD_MONITORED_USERS}):**\n${userIds.map((userId) => `<@${userId}>`).join("\n")}`,
+  );
+}
+
+async function handleRoleAdd(
+  interaction: ChatInputCommandInteraction<"cached">,
+  context: CommandContext,
+): Promise<void> {
+  const role = interaction.options.getRole("role", true);
+  if (role.id === interaction.guildId || role.managed) {
+    await interaction.editReply(
+      "Choose a normal guild role, not @everyone or a managed role.",
+    );
+    return;
+  }
+
+  const result = await context.repository.addGuildMonitoredRole({
+    actorUserId: interaction.user.id,
+    guildId: interaction.guildId,
+    roleId: role.id,
+  });
+  if (result === "not_configured") {
+    await interaction.editReply(
+      "Run `/yap setup` with an initial user or role before adding more roles.",
+    );
+    return;
+  }
+  if (result === "already_exists") {
+    await interaction.editReply(`${role.toString()} is already monitored.`);
+    return;
+  }
+  if (result === "limit_reached") {
+    await interaction.editReply(
+      `YapBot supports up to ${MAX_GUILD_MONITORED_ROLES} monitored roles per server.`,
+    );
+    return;
+  }
+
+  clearRuntimeState(context, interaction.guildId);
+  await interaction.editReply(
+    `${role.toString()} was added to the monitored role list.`,
+  );
+}
+
+async function handleRoleRemove(
+  interaction: ChatInputCommandInteraction<"cached">,
+  context: CommandContext,
+): Promise<void> {
+  const role = interaction.options.getRole("role", true);
+  const result = await context.repository.removeGuildMonitoredRole({
+    actorUserId: interaction.user.id,
+    guildId: interaction.guildId,
+    roleId: role.id,
+  });
+  if (result === "not_configured") {
+    await interaction.editReply(
+      "Run `/yap setup` with an initial user or role before removing roles.",
+    );
+    return;
+  }
+  if (result === "not_found") {
+    await interaction.editReply(`${role.toString()} is not monitored.`);
+    return;
+  }
+  if (result === "last_target") {
+    await interaction.editReply(
+      "YapBot must retain at least one monitored user or role. Add another target first, or use `/yap disable`.",
+    );
+    return;
+  }
+
+  clearRuntimeState(context, interaction.guildId);
+  await interaction.editReply(`${role.toString()} is no longer monitored.`);
+}
+
+async function handleRoles(
+  interaction: ChatInputCommandInteraction<"cached">,
+  context: CommandContext,
+): Promise<void> {
+  const config = await context.repository.getGuildConfig(interaction.guildId);
+  if (!config?.setupComplete) {
+    await interaction.editReply(
+      "YapBot is not configured. An administrator can run `/yap setup`.",
+    );
+    return;
+  }
+
+  const roleIds = await getConfiguredMonitoredRoleIds(
+    context.repository,
+    interaction.guildId,
+    config.monitoredRoleId,
+  );
+  await interaction.editReply(
+    `**Monitored roles (${roleIds.length}/${MAX_GUILD_MONITORED_ROLES}):**\n${roleIds.map((roleId) => `<@&${roleId}>`).join("\n")}`,
   );
 }
 
@@ -492,17 +578,19 @@ async function handleEnable(
     return;
   }
 
-  const monitoredUserIds =
-    config.targetType === "user"
-      ? await getConfiguredMonitoredUserIds(
-          context.repository,
-          interaction.guildId,
-          config.monitoredUserId,
-        )
-      : [];
-  const targetReady =
-    (config.targetType === "role" && Boolean(config.monitoredRoleId)) ||
-    (config.targetType === "user" && monitoredUserIds.length > 0);
+  const [monitoredUserIds, monitoredRoleIds] = await Promise.all([
+    getConfiguredMonitoredUserIds(
+      context.repository,
+      interaction.guildId,
+      config.monitoredUserId,
+    ),
+    getConfiguredMonitoredRoleIds(
+      context.repository,
+      interaction.guildId,
+      config.monitoredRoleId,
+    ),
+  ]);
+  const targetReady = monitoredUserIds.length + monitoredRoleIds.length > 0;
   if (!targetReady) {
     await interaction.editReply("Run `/yap setup` before enabling YapBot.");
     return;
@@ -591,24 +679,23 @@ async function handleStatus(
       (result): result is { channelId: string; diagnostic: string } =>
         result.diagnostic !== undefined,
     );
-  const monitoredUserIds =
-    config.targetType === "user"
-      ? await getConfiguredMonitoredUserIds(
-          context.repository,
-          interaction.guildId,
-          config.monitoredUserId,
-        )
-      : [];
-  const target =
-    config.targetType === "role" && config.monitoredRoleId
-      ? `Role <@&${config.monitoredRoleId}>`
-      : config.targetType === "user"
-        ? `Users (${monitoredUserIds.length}): ${monitoredUserIds.length > 0 ? monitoredUserIds.map((userId) => `<@${userId}>`).join(", ") : "not configured"}`
-        : "not configured";
+  const [monitoredUserIds, monitoredRoleIds] = await Promise.all([
+    getConfiguredMonitoredUserIds(
+      context.repository,
+      interaction.guildId,
+      config.monitoredUserId,
+    ),
+    getConfiguredMonitoredRoleIds(
+      context.repository,
+      interaction.guildId,
+      config.monitoredRoleId,
+    ),
+  ]);
   await interaction.editReply(
     [
       `**Enabled:** ${config.enabled ? "yes" : "no"}`,
-      `**Target:** ${target}`,
+      `**Monitored users (${monitoredUserIds.length}):** ${monitoredUserIds.length > 0 ? monitoredUserIds.map((userId) => `<@${userId}>`).join(", ") : "none"}`,
+      `**Monitored roles (${monitoredRoleIds.length}):** ${monitoredRoleIds.length > 0 ? monitoredRoleIds.map((roleId) => `<@&${roleId}>`).join(", ") : "none"}`,
       `**Channels (${channelIds.length}):** ${channelIds.length > 0 ? channelIds.map((channelId) => `<#${channelId}>`).join(", ") : "not configured"}`,
       `**Threshold:** ${config.threshold} messages / ${config.windowSeconds} seconds`,
       `**Cooldown:** ${config.cooldownSeconds} seconds`,
@@ -643,6 +730,19 @@ async function getConfiguredMonitoredUserIds(
   }
 
   return legacyUserId ? [legacyUserId] : [];
+}
+
+async function getConfiguredMonitoredRoleIds(
+  repository: YapBotRepository,
+  guildId: string,
+  legacyRoleId: string | null,
+): Promise<string[]> {
+  const roleIds = await repository.getGuildMonitoredRoleIds(guildId);
+  if (roleIds.length > 0) {
+    return roleIds;
+  }
+
+  return legacyRoleId ? [legacyRoleId] : [];
 }
 
 function diagnoseChannelPermissions(

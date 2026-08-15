@@ -59,4 +59,28 @@ describe("matchesConfiguredTarget", () => {
       ),
     ).toBe(false);
   });
+
+  it("matches any configured role alongside listed users", () => {
+    const config = {
+      monitoredRoleId: null,
+      monitoredUserId: "user-1",
+      targetType: "user",
+    };
+
+    expect(
+      matchesConfiguredTarget(
+        config,
+        "user-2",
+        (roleId) => roleId === "role-2",
+        false,
+        ["role-1", "role-2"],
+      ),
+    ).toBe(true);
+    expect(
+      matchesConfiguredTarget(config, "user-2", () => false, false, [
+        "role-1",
+        "role-2",
+      ]),
+    ).toBe(false);
+  });
 });

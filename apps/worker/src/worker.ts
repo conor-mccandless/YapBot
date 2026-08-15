@@ -168,20 +168,24 @@ export async function startWorker(
         return;
       }
 
-      const userTargetMatch =
-        config.targetType === "user"
-          ? await repository.isGuildUserMonitored(
-              message.guildId,
-              message.author.id,
-              config.monitoredUserId,
-            )
-          : false;
+      const [userTargetMatch, monitoredRoleIds] = await Promise.all([
+        repository.isGuildUserMonitored(
+          message.guildId,
+          message.author.id,
+          config.monitoredUserId,
+        ),
+        repository.getGuildMonitoredRoleIds(message.guildId),
+      ]);
+      if (monitoredRoleIds.length === 0 && config.monitoredRoleId) {
+        monitoredRoleIds.push(config.monitoredRoleId);
+      }
       if (
         !matchesConfiguredTarget(
           config,
           message.author.id,
           (roleId) => message.member?.roles.cache.has(roleId) ?? false,
           userTargetMatch,
+          monitoredRoleIds,
         )
       ) {
         return;

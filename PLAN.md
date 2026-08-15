@@ -443,7 +443,7 @@ release until v1 behavior is stable.
 
 ### v1.1 - private-beta targeting and owner-funded OpenAI (implemented)
 
-- Exactly one monitored target mode per guild: either one role or an individual user list with add/remove/list commands.
+- Combined monitored user and role lists per guild, with add/remove/list commands and union matching.
 - Administrator-managed per-user persona descriptions used only as request-time
   dry-humor context, with set/show/clear commands and audit metadata.
 - Bounded trigger context (current message count, configured threshold, and

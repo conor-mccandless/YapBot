@@ -9,14 +9,7 @@ export function matchesConfiguredTarget(
   authorId: string,
   authorHasRole: (roleId: string) => boolean,
   authorIsListedUser = config.monitoredUserId === authorId,
+  monitoredRoleIds = config.monitoredRoleId ? [config.monitoredRoleId] : [],
 ): boolean {
-  if (config.targetType === "user") {
-    return authorIsListedUser;
-  }
-
-  if (config.targetType === "role" && config.monitoredRoleId) {
-    return authorHasRole(config.monitoredRoleId);
-  }
-
-  return false;
+  return authorIsListedUser || monitoredRoleIds.some(authorHasRole);
 }
