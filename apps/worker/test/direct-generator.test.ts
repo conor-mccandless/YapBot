@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildDirectContext } from "../src/direct-context.js";
+import { isGeneratedResponseWithinLimits } from "../src/response-generator.js";
 import {
   buildDirectInput,
   DIRECT_INSTRUCTIONS,
+  DIRECT_MAX_RESPONSE_CHARACTERS,
+  DIRECT_MAX_RESPONSE_WORDS,
   generateDirectResponse,
   validateDirectResponse,
 } from "../src/direct-generator.js";
@@ -45,7 +48,10 @@ describe("direct response contract", () => {
   it("corrects only structural failures once", async () => {
     const model = vi
       .fn()
-      .mockResolvedValueOnce({ status: "completed", text: "x".repeat(701) })
+      .mockResolvedValueOnce({
+        status: "completed",
+        text: "x".repeat(DIRECT_MAX_RESPONSE_CHARACTERS + 1),
+      })
       .mockResolvedValueOnce({
         status: "completed",
         text: "Coffee isn't lunch.",
@@ -54,6 +60,44 @@ describe("direct response contract", () => {
       "openai",
     );
     expect(model.mock.calls[1]?.[1]).toBe("output_too_long");
+  });
+  it("accepts longer direct explanations without relaxing passive limits", async () => {
+    const text = "The argument is about whether coffee counts as a meal. "
+      .repeat(8)
+      .trim();
+    expect(text.split(/\s+/u).length).toBeGreaterThan(75);
+    expect(validateDirectResponse(text)).toEqual([]);
+    expect(isGeneratedResponseWithinLimits(text)).toBe(false);
+    const model = vi.fn().mockResolvedValue({ status: "completed", text });
+    expect((await generateDirectResponse(context, model, true)).source).toBe(
+      "openai",
+    );
+    expect(model).toHaveBeenCalledTimes(1);
+  });
+  it("enforces the new word and character boundaries independently", () => {
+    expect(DIRECT_MAX_RESPONSE_WORDS).toBe(150);
+    expect(DIRECT_MAX_RESPONSE_CHARACTERS).toBe(1200);
+    expect(validateDirectResponse(Array(150).fill("word").join(" "))).toEqual(
+      [],
+    );
+    expect(validateDirectResponse(Array(151).fill("word").join(" "))).toEqual([
+      "output_too_long",
+    ]);
+    expect(validateDirectResponse("x".repeat(1200))).toEqual([]);
+    expect(validateDirectResponse("x".repeat(1201))).toEqual([
+      "output_too_long",
+    ]);
+  });
+  it("asks for absent evidence without turning empty history into a roast requirement", () => {
+    expect(DIRECT_INSTRUCTIONS).toContain(
+      "Missing, filtered, or unavailable history means you lack evidence",
+    );
+    expect(DIRECT_INSTRUCTIONS).toContain("Do not judge absent comments");
+    expect(DIRECT_INSTRUCTIONS).toContain(
+      "Still answer self-contained questions and supplied images normally",
+    );
+    expect(DIRECT_INSTRUCTIONS).not.toContain("one to three short sentences");
+    expect(DIRECT_INSTRUCTIONS).toContain("150 words and 1200 characters");
   });
   it("bounds retries and captures response diagnostics", async () => {
     const model = vi.fn().mockResolvedValue({ status: "completed", text: "" });

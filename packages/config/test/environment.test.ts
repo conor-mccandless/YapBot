@@ -22,6 +22,7 @@ describe("parseEnvironment", () => {
     expect(result.OPENAI_DAILY_GUILD_LIMIT).toBe(100);
     expect(result.OPENAI_DIRECT_DAILY_GUILD_LIMIT).toBe(50);
     expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(900);
+    expect(result.OPENAI_DIRECT_MAX_OUTPUT_TOKENS).toBe(1200);
     expect(result.OPENAI_IMAGE_MODEL).toBeUndefined();
     expect(result.OPENAI_LOG_PROMPT_DIAGNOSTICS).toBe(false);
     expect(result.OPENAI_LOG_REJECTED_RESPONSES).toBe(false);
@@ -40,6 +41,7 @@ describe("parseEnvironment", () => {
       OPENAI_LOG_PROMPT_DIAGNOSTICS: "true",
       OPENAI_LOG_REJECTED_RESPONSES: "true",
       OPENAI_MAX_OUTPUT_TOKENS: "80",
+      OPENAI_DIRECT_MAX_OUTPUT_TOKENS: "1600",
       OPENAI_REASONING_EFFORT: "medium",
       OPENAI_TIMEOUT_MS: "5000",
     });
@@ -50,9 +52,22 @@ describe("parseEnvironment", () => {
     expect(result.OPENAI_LOG_PROMPT_DIAGNOSTICS).toBe(true);
     expect(result.OPENAI_LOG_REJECTED_RESPONSES).toBe(true);
     expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(80);
+    expect(result.OPENAI_DIRECT_MAX_OUTPUT_TOKENS).toBe(1600);
     expect(result.OPENAI_REASONING_EFFORT).toBe("medium");
     expect(result.OPENAI_TIMEOUT_MS).toBe(5_000);
   });
+
+  it.each(["31", "4001", "1200.5", "invalid"])(
+    "rejects invalid direct token budget %s",
+    (value) => {
+      expect(() =>
+        parseEnvironment({
+          ...validEnvironment,
+          OPENAI_DIRECT_MAX_OUTPUT_TOKENS: value,
+        }),
+      ).toThrow();
+    },
+  );
 
   it("allows zero direct quota without changing passive quota", () => {
     const result = parseEnvironment({

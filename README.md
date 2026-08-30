@@ -27,12 +27,18 @@ Direct settings share `/yap configure` with passive settings. `cooldown-seconds`
 still controls passive replies; `direct-cooldown-seconds` controls direct questions.
 Omitted settings stay unchanged, and direct-only edits leave passive counters intact.
 
-- Direct requests use only recent history from the current channel (up to 25
-  messages from five minutes, plus an explicit same-channel reply).
+- Direct requests use only recent history from the current channel (up to 40
+  human messages from 15 minutes, selected from the latest 50 messages, plus an
+  explicit same-channel reply). Message text stays bounded to 2,000 characters
+  each and 20,000 total; instructions, metadata, personas, and images are additional.
 - Shared nicknames produce a clarification. Unknown names require a mention or
   more context; this is not a guild-wide nickname/alias search.
 - Replies use separate prompting: no mandatory slowdown, trigger explanation,
   yap keyword, or two-sentence requirement. Existing passive responses are unchanged.
+- Direct answers can use up to 150 words / 1,200 characters, without a fixed
+  sentence count. `OPENAI_DIRECT_MAX_OUTPUT_TOKENS` defaults to 1,200, separate
+  from the passive generation budget. Missing history is acknowledged as missing
+  evidence, not treated as proof that someone said nothing or made no point.
 - Direct requests do not increment or reset passive counters, including when a
   direct cooldown rejects them. Cooldown rejection is silent to avoid bot spam.
 - The configurable per-requester cooldown has a separate 5-second guild guard
@@ -190,6 +196,7 @@ OPENAI_LOG_REJECTED_RESPONSES=false
 OPENAI_REASONING_EFFORT=low
 OPENAI_DAILY_GUILD_LIMIT=100
 OPENAI_MAX_OUTPUT_TOKENS=900
+OPENAI_DIRECT_MAX_OUTPUT_TOKENS=1200
 OPENAI_TIMEOUT_MS=10000
 
 DATABASE_URL=postgresql://yapbot:yapbot_dev@localhost:5432/yapbot
@@ -199,23 +206,24 @@ NODE_ENV=development
 
 ### Environment variable reference
 
-| Variable                        | Required    | Description                                                                                          |
-| ------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
-| `DISCORD_TOKEN`                 | Yes         | Current secret token from the Discord **Bot** page.                                                  |
-| `DISCORD_APPLICATION_ID`        | Yes         | Application ID from **General Information**.                                                         |
-| `ALLOWED_GUILD_IDS`             | Yes         | Comma-separated list of approved Discord server IDs. At least one is required.                       |
-| `OPENAI_API_KEY`                | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                |
-| `OPENAI_MODEL`                  | With OpenAI | Model for text-only and, by default, image-bearing requests.                                         |
-| `OPENAI_IMAGE_MODEL`            | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                   |
-| `OPENAI_LOG_PROMPT_DIAGNOSTICS` | No          | Logs system instructions and structured text input without image bytes; default is `false`.          |
-| `OPENAI_LOG_REJECTED_RESPONSES` | No          | Logs rejected initial model output and its correction attempt for prompt tuning; default is `false`. |
-| `OPENAI_REASONING_EFFORT`       | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `low`.                                |
-| `OPENAI_DAILY_GUILD_LIMIT`      | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.          |
-| `OPENAI_MAX_OUTPUT_TOKENS`      | No          | Provider output budget from 32-1,000; default is 900. YapBot rejects visible replies over 45 words.  |
-| `OPENAI_TIMEOUT_MS`             | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                     |
-| `DATABASE_URL`                  | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                   |
-| `LOG_LEVEL`                     | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                            |
-| `NODE_ENV`                      | No          | `development`, `test`, or `production`. Compose sets the worker to `production`.                     |
+| Variable                          | Required    | Description                                                                                                               |
+| --------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`                   | Yes         | Current secret token from the Discord **Bot** page.                                                                       |
+| `DISCORD_APPLICATION_ID`          | Yes         | Application ID from **General Information**.                                                                              |
+| `ALLOWED_GUILD_IDS`               | Yes         | Comma-separated list of approved Discord server IDs. At least one is required.                                            |
+| `OPENAI_API_KEY`                  | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                                     |
+| `OPENAI_MODEL`                    | With OpenAI | Model for text-only and, by default, image-bearing requests.                                                              |
+| `OPENAI_IMAGE_MODEL`              | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                                        |
+| `OPENAI_LOG_PROMPT_DIAGNOSTICS`   | No          | Logs system instructions and structured text input without image bytes; default is `false`.                               |
+| `OPENAI_LOG_REJECTED_RESPONSES`   | No          | Logs rejected initial model output and its correction attempt for prompt tuning; default is `false`.                      |
+| `OPENAI_REASONING_EFFORT`         | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `low`.                                                     |
+| `OPENAI_DAILY_GUILD_LIMIT`        | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.                               |
+| `OPENAI_MAX_OUTPUT_TOKENS`        | No          | Passive provider output budget from 32-1,000; default is 900. Passive replies are capped at 45 words / 500 characters.    |
+| `OPENAI_DIRECT_MAX_OUTPUT_TOKENS` | No          | Direct provider output budget from 32-4,000; default is 1,200. Direct replies are capped at 150 words / 1,200 characters. |
+| `OPENAI_TIMEOUT_MS`               | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                                          |
+| `DATABASE_URL`                    | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                                        |
+| `LOG_LEVEL`                       | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                                                 |
+| `NODE_ENV`                        | No          | `development`, `test`, or `production`. Compose sets the worker to `production`.                                          |
 
 `.env` and other local secret files are ignored by Git. Verify that with `git status --short` before committing.
 

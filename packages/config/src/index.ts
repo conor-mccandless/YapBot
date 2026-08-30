@@ -63,6 +63,12 @@ export const environmentSchema = z.object({
     .min(32)
     .max(1_000)
     .default(900),
+  OPENAI_DIRECT_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(32)
+    .max(4_000)
+    .default(1_200),
   OPENAI_IMAGE_MODEL: optionalSecretSchema,
   OPENAI_LOG_PROMPT_DIAGNOSTICS: booleanStringSchema,
   OPENAI_LOG_REJECTED_RESPONSES: booleanStringSchema,

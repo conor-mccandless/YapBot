@@ -178,7 +178,7 @@ export async function runDirectDiscordInteraction(
           requestId: message.id,
           guildId: message.guildId,
           promptVersion: DIRECT_PROMPT_VERSION,
-          maxOutputTokens: environment.OPENAI_MAX_OUTPUT_TOKENS,
+          maxOutputTokens: environment.OPENAI_DIRECT_MAX_OUTPUT_TOKENS,
           reasoningEffort: environment.OPENAI_REASONING_EFFORT,
           ...(environment.OPENAI_LOG_PROMPT_DIAGNOSTICS && prompt
             ? { inputText: prompt, instructions: DIRECT_INSTRUCTIONS }

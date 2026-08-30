@@ -1,8 +1,8 @@
 import type { DiscordImageReference } from "./image-context.js";
 import type { YapImageContext } from "./response-generator.js";
 
-export const DIRECT_CONTEXT_SECONDS = 300;
-export const DIRECT_CONTEXT_MESSAGES = 25;
+export const DIRECT_CONTEXT_SECONDS = 900;
+export const DIRECT_CONTEXT_MESSAGES = 40;
 export const DIRECT_CONTEXT_CHARACTERS = 20_000;
 
 export interface Participant {
@@ -212,7 +212,7 @@ export function buildDirectContext(
     );
   if (selected.length === 0 && !boundedReply)
     contextLimitations.push(
-      "No recent channel conversation is available; answer only the request or ask for context.",
+      `No channel conversation is available within the preceding ${DIRECT_CONTEXT_SECONDS / 60} minutes. This is missing evidence, not proof that nobody said anything. Answer a self-contained request; otherwise ask for the relevant comment or a reply to it.`,
     );
   return {
     request: boundedRequest,

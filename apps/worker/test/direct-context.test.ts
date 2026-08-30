@@ -121,7 +121,9 @@ describe("bounded channel evidence", () => {
         msg("bot", "do this", bot),
         msg("foreign", "secret", freddy, { channelId: "other" }),
         msg("guild", "secret", freddy, { guildId: "other" }),
-        msg("old", "old", freddy, { createdAtMs: 1 }),
+        msg("old", "old", freddy, {
+          createdAtMs: request("").createdAtMs - 901_000,
+        }),
         msg("future", "new", steve, { createdAtMs: 500_000 }),
         msg("system", "x", steve, { ignored: true }),
         request("what's going on?"),
@@ -132,7 +134,9 @@ describe("bounded channel evidence", () => {
     expect(context.subjectPersonas).toEqual([]);
   });
   it("includes one explicit older reply or referenced YapBot answer", () => {
-    const old = msg("old", "Coffee rollout", bot, { createdAtMs: 1 });
+    const old = msg("old", "Coffee rollout", bot, {
+      createdAtMs: request("").createdAtMs - 901_000,
+    });
     const context = buildDirectContext(request("why?"), history, bot.id, old);
     expect(context.repliedTo?.id).toBe("old");
     expect(context.contextLimitations.join()).toContain("older");
@@ -162,8 +166,77 @@ describe("bounded channel evidence", () => {
       20_000,
     );
     expect(texts.every((m) => m.content.length <= 2000)).toBe(true);
-    expect(context.recentConversation.length).toBeLessThanOrEqual(25);
+    expect(context.recentConversation.length).toBeLessThanOrEqual(40);
     expect(context.recentConversation.some((m) => m.id === "f")).toBe(true);
+  });
+  it("includes evidence at fifteen minutes but excludes anything older", () => {
+    const now = 2_000_000;
+    const context = buildDirectContext(
+      request("what is Freddy saying?", { createdAtMs: now }),
+      [
+        msg("old", "outside the window", freddy, {
+          createdAtMs: now - 900_001,
+        }),
+        msg("boundary", "still relevant", freddy, {
+          createdAtMs: now - 900_000,
+        }),
+        msg("ten-minutes", "Coffee is a meal.", freddy, {
+          createdAtMs: now - 600_000,
+        }),
+      ],
+      bot.id,
+    );
+    expect(context.recentConversation.map((m) => m.id)).toEqual([
+      "boundary",
+      "ten-minutes",
+    ]);
+    expect(context.subjectResolution.subjects).toEqual([freddy]);
+  });
+  it("keeps forty messages when the text budget permits", () => {
+    const context = buildDirectContext(
+      request("what's going on?"),
+      Array.from({ length: 50 }, (_, i) =>
+        msg(`m${i}`, "Short update", steve, { createdAtMs: 401_000 + i }),
+      ),
+      bot.id,
+    );
+    expect(context.recentConversation).toHaveLength(40);
+    expect(context.recentConversation[0]?.id).toBe("m10");
+    expect(context.recentConversation[39]?.id).toBe("m49");
+  });
+  it("labels empty history as missing evidence, not a judgment of the subject", () => {
+    const context = buildDirectContext(
+      request("what is Freddy yapping about?", { mentions: [freddy] }),
+      [],
+      bot.id,
+    );
+    expect(context.subjectResolution.subjects).toEqual([freddy]);
+    expect(context.recentConversation).toEqual([]);
+    expect(context.contextLimitations.join(" ")).toContain("15 minutes");
+    expect(context.contextLimitations.join(" ")).toContain(
+      "not proof that nobody said anything",
+    );
+  });
+  it("retains image evidence from the wider history window", () => {
+    const now = 2_000_000;
+    const context = buildDirectContext(
+      request("what is Freddy showing us?", { createdAtMs: now }),
+      [
+        msg("image", "", freddy, {
+          createdAtMs: now - 600_000,
+          declaredImageCount: 1,
+          images: [
+            {
+              contentType: "image/png",
+              size: 100,
+              url: "https://cdn.discordapp.com/attachments/123/456/photo.png",
+            },
+          ],
+        }),
+      ],
+      bot.id,
+    );
+    expect(directMediaCandidates(context).map((m) => m.id)).toEqual(["image"]);
   });
   it("preserves media priority request, reply, then subject", () => {
     const context = buildDirectContext(
