@@ -92,7 +92,7 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
   it("updates only direct settings, audits changes, and isolates guilds", async () => {
     const old = await repository.getGuildConfig(guild);
     expect(
-      await repository.configureDirect({
+      await repository.configureGuild({
         actorUserId: "300000000000000001",
         guildId: guild,
         update: { directResponsesEnabled: true, directCooldownSeconds: 10 },
@@ -107,11 +107,11 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
     ).toBe(false);
     const audit =
       await connection.client`select command_name from admin_audit_event where guild_id=${guild}`;
-    expect(audit[0]?.command_name).toBe("direct-config");
+    expect(audit[0]?.command_name).toBe("configure");
   });
   it("checks cooldown bounds in both repository and database", async () => {
     await expect(
-      repository.configureDirect({
+      repository.configureGuild({
         actorUserId: "1",
         guildId: guild,
         update: { directCooldownSeconds: -1 },
@@ -121,12 +121,69 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
       connection.client`update guild_config set direct_cooldown_seconds=3601 where guild_id=${guild}`,
     ).rejects.toThrow();
     expect(
-      await repository.configureDirect({
+      await repository.configureGuild({
         actorUserId: "1",
         guildId: "unconfigured",
         update: { directResponsesEnabled: true },
       }),
     ).toBe(false);
+  });
+  it("saves mixed settings together and rejects invalid mixed updates without mutation", async () => {
+    const otherBefore = await repository.getGuildConfig(other);
+    expect(
+      await repository.configureGuild({
+        actorUserId: "1",
+        guildId: guild,
+        update: {
+          cooldownSeconds: 60,
+          directCooldownSeconds: 0,
+          directResponsesEnabled: false,
+        },
+      }),
+    ).toBe(true);
+    const fresh = await repository.getGuildConfig(guild);
+    expect(fresh).toMatchObject({
+      cooldownSeconds: 60,
+      directCooldownSeconds: 0,
+      directResponsesEnabled: false,
+    });
+    const auditBefore =
+      await connection.client`select * from admin_audit_event where guild_id=${guild} order by created_at,id`;
+    expect(auditBefore).toHaveLength(2);
+    expect(auditBefore[1]?.change).toEqual({
+      cooldownSeconds: 60,
+      directCooldownSeconds: 0,
+      directResponsesEnabled: false,
+    });
+    await expect(
+      repository.configureGuild({
+        actorUserId: "1",
+        guildId: guild,
+        update: { threshold: 6, directCooldownSeconds: 3601 },
+      }),
+    ).rejects.toThrow();
+    expect(await repository.getGuildConfig(guild)).toEqual(fresh);
+    expect(
+      await connection.client`select * from admin_audit_event where guild_id=${guild} order by created_at,id`,
+    ).toEqual(auditBefore);
+    expect(await repository.getGuildConfig(other)).toEqual(otherBefore);
+  });
+  it("does not configure a guild whose setup is incomplete", async () => {
+    const incomplete = "100000000000000003";
+    await connection.client`insert into guild_config (guild_id) values (${incomplete})`;
+    expect(
+      await repository.configureGuild({
+        actorUserId: "1",
+        guildId: incomplete,
+        update: { directResponsesEnabled: true },
+      }),
+    ).toBe(false);
+    expect(
+      (await repository.getGuildConfig(incomplete))?.directResponsesEnabled,
+    ).toBe(false);
+    expect(
+      await connection.client`select * from admin_audit_event where guild_id=${incomplete}`,
+    ).toHaveLength(0);
   });
   it("handles zero quota before first insert and atomic concurrent limits", async () => {
     const now = new Date("2026-08-30T12:00:00Z");

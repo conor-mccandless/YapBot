@@ -14,7 +14,6 @@ import {
 } from "discord.js";
 
 const ADMIN_SUBCOMMANDS = new Set([
-  "direct-config",
   "setup",
   "channel-add",
   "channel-remove",
@@ -62,35 +61,6 @@ export async function handleYapCommand(
   }
 
   switch (subcommand) {
-    case "direct-config": {
-      const enabled = interaction.options.getBoolean("enabled");
-      const cooldown = interaction.options.getInteger("cooldown-seconds");
-      if (
-        (enabled === null && cooldown === null) ||
-        (cooldown !== null &&
-          (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600))
-      ) {
-        await interaction.editReply(
-          "Provide enabled and/or cooldown-seconds (0-3600).",
-        );
-        break;
-      }
-      const updated = await context.repository.configureDirect({
-        actorUserId: interaction.user.id,
-        guildId: interaction.guildId,
-        update: {
-          ...(enabled === null ? {} : { directResponsesEnabled: enabled }),
-          ...(cooldown === null ? {} : { directCooldownSeconds: cooldown }),
-        },
-      });
-      if (updated) context.directLimiter?.clearGuild(interaction.guildId);
-      await interaction.editReply(
-        updated
-          ? "Direct interaction settings saved. Passive counters were not reset. Direct questions also require `/yap enable`; a separate 5-second server guard applies."
-          : "Run `/yap setup` before configuring direct interactions.",
-      );
-      break;
-    }
     case "setup":
       await handleSetup(interaction, context);
       break;
@@ -571,11 +541,32 @@ async function handleConfigure(
   const windowSeconds = interaction.options.getInteger("window-seconds");
   const cooldownSeconds = interaction.options.getInteger("cooldown-seconds");
   const pingTarget = interaction.options.getBoolean("ping-target");
-  const update = {
+  const directResponsesEnabled =
+    interaction.options.getBoolean("direct-enabled");
+  const directCooldownSeconds = interaction.options.getInteger(
+    "direct-cooldown-seconds",
+  );
+  if (
+    directCooldownSeconds !== null &&
+    (!Number.isInteger(directCooldownSeconds) ||
+      directCooldownSeconds < 0 ||
+      directCooldownSeconds > 3600)
+  ) {
+    await interaction.editReply(
+      "direct-cooldown-seconds must be an integer from 0 to 3600.",
+    );
+    return;
+  }
+  const passiveUpdate = {
     ...(threshold === null ? {} : { threshold }),
     ...(windowSeconds === null ? {} : { windowSeconds }),
     ...(cooldownSeconds === null ? {} : { cooldownSeconds }),
     ...(pingTarget === null ? {} : { pingTarget }),
+  };
+  const update = {
+    ...passiveUpdate,
+    ...(directResponsesEnabled === null ? {} : { directResponsesEnabled }),
+    ...(directCooldownSeconds === null ? {} : { directCooldownSeconds }),
   };
 
   if (Object.keys(update).length === 0) {
@@ -593,9 +584,20 @@ async function handleConfigure(
     return;
   }
 
-  clearRuntimeState(context, interaction.guildId);
+  const hasPassiveUpdate = Object.keys(passiveUpdate).length > 0;
+  if (hasPassiveUpdate) {
+    clearRuntimeState(context, interaction.guildId);
+  } else {
+    context.directLimiter?.clearGuild(interaction.guildId);
+  }
   await interaction.editReply(
-    "YapBot configuration updated. Runtime counters were reset.",
+    "YapBot configuration updated. " +
+      (hasPassiveUpdate
+        ? "Runtime counters were reset."
+        : "Passive counters were not reset.") +
+      (directResponsesEnabled !== null || directCooldownSeconds !== null
+        ? " Direct questions also require `/yap enable`; a separate 5-second server guard applies."
+        : ""),
   );
 }
 

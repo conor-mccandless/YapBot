@@ -43,9 +43,6 @@ export interface BehaviorUpdate {
   pingTarget?: boolean;
   threshold?: number;
   windowSeconds?: number;
-}
-
-export interface DirectConfigUpdate {
   directResponsesEnabled?: boolean;
   directCooldownSeconds?: number;
 }
@@ -56,41 +53,6 @@ export type SetupTarget =
 
 export class YapBotRepository {
   constructor(private readonly connection: DatabaseConnection) {}
-
-  async configureDirect(input: {
-    actorUserId: string;
-    guildId: string;
-    update: DirectConfigUpdate;
-  }): Promise<boolean> {
-    const cooldown = input.update.directCooldownSeconds;
-    if (
-      Object.keys(input.update).length === 0 ||
-      (cooldown !== undefined &&
-        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600))
-    ) {
-      throw new Error("Invalid direct interaction settings");
-    }
-    return this.connection.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .update(guildConfig)
-        .set({ ...input.update, updatedAt: new Date() })
-        .where(
-          and(
-            eq(guildConfig.guildId, input.guildId),
-            eq(guildConfig.setupComplete, true),
-          ),
-        )
-        .returning({ guildId: guildConfig.guildId });
-      if (rows.length === 0) return false;
-      await transaction.insert(adminAuditEvent).values({
-        actorUserId: input.actorUserId,
-        guildId: input.guildId,
-        commandName: "direct-config",
-        change: input.update,
-      });
-      return true;
-    });
-  }
 
   async tryReserveDirectGeneration(
     guildId: string,
@@ -676,12 +638,25 @@ export class YapBotRepository {
     guildId: string;
     update: BehaviorUpdate;
   }): Promise<boolean> {
+    const cooldown = input.update.directCooldownSeconds;
+    if (
+      Object.keys(input.update).length === 0 ||
+      (cooldown !== undefined &&
+        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600))
+    ) {
+      throw new Error("Invalid configuration settings");
+    }
     const rows = await this.connection.database.transaction(
       async (transaction) => {
         const updated = await transaction
           .update(guildConfig)
           .set({ ...input.update, updatedAt: new Date() })
-          .where(eq(guildConfig.guildId, input.guildId))
+          .where(
+            and(
+              eq(guildConfig.guildId, input.guildId),
+              eq(guildConfig.setupComplete, true),
+            ),
+          )
           .returning({ guildId: guildConfig.guildId });
 
         if (updated.length > 0) {

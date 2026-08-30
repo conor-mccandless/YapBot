@@ -15,13 +15,17 @@ Direct questions are **disabled by default**. An owner or member with Manage
 Server can enable them in a configured guild:
 
 ```text
-/yap direct-config enabled:true cooldown-seconds:30
+/yap configure direct-enabled:true direct-cooldown-seconds:30
 ```
 
 YapBot must also be enabled with `/yap enable`. Any human in its configured text
 channels can then ask `@YapBot what's going on here?`, ask about another recent
 participant by mention or exact display name/username, or reply to YapBot to
 continue a discussion. A reply to a human needs an explicit YapBot address.
+
+Direct settings share `/yap configure` with passive settings. `cooldown-seconds`
+still controls passive replies; `direct-cooldown-seconds` controls direct questions.
+Omitted settings stay unchanged, and direct-only edits leave passive counters intact.
 
 - Direct requests use only recent history from the current channel (up to 25
   messages from five minutes, plus an explicit same-channel reply).
@@ -38,7 +42,7 @@ continue a discussion. A reply to a human needs an explicit YapBot address.
   `OPENAI_DAILY_GUILD_LIMIT`, not shared with it. Zero stops direct model calls.
 - Existing secure image handling is available; animated GIF/video recognition is
   not included. No extra Discord privileges or persistent message-history table.
-- `/yap status` shows direct settings. `/yap direct-config enabled:false` restores
+- `/yap status` shows direct settings. `/yap configure direct-enabled:false` restores
   legacy ping/threshold behavior. `/yap disable` stops both kinds of response.
 
 For database integration tests, provide `YAPBOT_TEST_DATABASE_URL` pointing only

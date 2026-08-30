@@ -9,7 +9,7 @@ owner. It is separate from the image-preview bug fix on
 `codex/image-preview-refresh`. The larger follow-ons in section 10 remain planned.
 Direct interactions remain disabled in existing guilds until explicitly enabled.
 
-### Verification completed (2026-08-30)
+### Initial feature verification (2026-08-30)
 
 - 158 automated tests passed, including five real PostgreSQL upgrade, persistence,
   configuration-isolation, and quota tests in a disposable database.
@@ -29,6 +29,19 @@ Direct interactions remain disabled in existing guilds until explicitly enabled.
   the predeployment snapshot; direct interactions remain false with a 30-second
   cooldown in both guilds. Database backup and previous worker image retained
   locally for rollback. No release tag or GitHub push was performed.
+
+### Configure consolidation follow-up (2026-08-30)
+
+- Direct options now live under `/yap configure`; the separate `direct-config`
+  subcommand was removed and this was verified through Discord in both guilds.
+- 165 tests passed, including seven disposable PostgreSQL tests. Coverage includes
+  authorization, unchanged passive counters for direct-only edits, distinct
+  cooldowns, atomic mixed updates, false/zero values, and failed saves.
+- Type checking, lint, formatting, and worker image build passed. Deployed worker
+  image begins `7bdb1abc00db`; both guilds connected and registered commands.
+- All configuration, channel, watched-user/role, and persona checksums match the
+  predeployment snapshot. No settings were enabled or disabled by this deployment.
+  The disposable test database was removed; the live database was not recreated.
 
 ### Implementation notes
 
@@ -267,15 +280,17 @@ generation_count)` with a composite primary key. Keep the existing passive
 Command:
 
 ```text
-/yap direct-config enabled:true cooldown-seconds:30
+/yap configure direct-enabled:true direct-cooldown-seconds:30
 ```
 
-Require owner or Manage Server at runtime, matching existing admin commands. Add
-the command to the administrative allowlist, reject empty/out-of-range updates,
-audit changes, and show direct enabled/cooldown status in `/yap status`. Apply
-settings immediately without re-running setup. Changing direct settings must not
-clear passive counters; use lane-specific state clearing instead of blindly
-calling the existing all-state reset helper.
+Use the existing `/yap configure` command and its owner/Manage Server runtime
+check; do not add another subcommand. Keep `cooldown-seconds` for passive replies
+and `direct-cooldown-seconds` for direct questions. Reject empty/out-of-range
+updates, audit one atomic save (including mixed passive/direct updates), and show
+direct enabled/cooldown status in `/yap status`. Omitted settings remain unchanged.
+Apply settings immediately without re-running setup. Direct-only changes must
+not clear passive counters; updates containing passive options retain the existing
+all-state reset behavior.
 
 Add `OPENAI_DIRECT_DAILY_GUILD_LIMIT` (recommended initial default 50). Reservations
 must be atomic and correct on first insert, exhaustion, zero limits, and UTC day
@@ -316,50 +331,51 @@ Tests check behavioral outcomes, not fixed roast wording. All existing tests mus
 remain green. Model semantics need curated fixtures plus manual evaluation; mocks
 alone cannot prove that an LLM understood a conversation.
 
-| ID  | Case                                                           | Required result                                                  |
-| --- | -------------------------------------------------------------- | ---------------------------------------------------------------- |
-| P01 | Freddy/Steve alternate three posts each                        | Exactly one passive response per user; separate cooldown/persona |
-| P02 | Same user posts in two configured channels                     | Existing guild+user passive aggregation preserved                |
-| P03 | User-list, role-list, overlapping memberships                  | Correct eligibility; one count per message                       |
-| P04 | Unmonitored ordinary posts                                     | No passive response                                              |
-| P05 | Passive images, no persona, relevant/irrelevant persona        | Existing routing and contract unchanged                          |
-| P06 | Direct feature off, monitored user pings bot                   | Exact legacy threshold/address behavior                          |
-| P07 | Direct settings changed                                        | Passive counts/cooldowns remain intact                           |
-| R01 | Enabled monitored user asks about Freddy                       | Direct handler only; no detector call                            |
-| R02 | Unmonitored observer asks for recap                            | Direct handler allowed; full current-channel context             |
-| R03 | Direct request would be third passive message                  | One direct response; passive count remains two                   |
-| R04 | Direct request while requester or subject has passive cooldown | Direct remains eligible                                          |
-| R05 | Cooldown-rejected direct request                               | No LLM, no fallback to passive, explicit log reason              |
-| R06 | Bot/webhook/DM/unapproved guild/unconfigured channel           | Neither lane runs                                                |
-| R07 | Master disable or direct flag off                              | Master stops both; direct off restores legacy lane               |
-| R08 | Duplicate event/concurrent requests                            | No duplicate reply; atomic cooldown/guard reservation            |
-| R09 | Another user's passive event during direct guild guard         | Passive still operates                                           |
-| H01 | Interleaved human history with bots and duplicates             | Chronological, attributed, filtered evidence                     |
-| H02 | History length/time/text limits                                | Deterministic bounds; request is included once                   |
-| H03 | Worker restart                                                 | Direct recap can read current Discord history                    |
-| H04 | Missing history permission, 404 reply, API timeout             | Bounded fallback; no fabricated context                          |
-| H05 | Another guild/channel or later messages                        | Excluded from the prompt                                         |
-| H06 | Explicit reply older than horizon                              | One labeled same-channel exception, not an unbounded fetch       |
-| N01 | Actual Discord user mention                                    | Stable target identity, even if nickname differs                 |
-| N02 | Freddy/freddy/Freddy's/freddys                                 | Unique supported whole-name match resolves                       |
-| N03 | Shared nickname, partial/common-word collision                 | Clarification; no arbitrary target                               |
-| N04 | Unknown name or resolved user without recent messages          | Honest clarification/missing evidence                            |
-| N05 | Reply plus "this person"                                       | Replied-to author becomes subject                                |
-| N06 | Explicit different subject in a reply                          | Explicit subject is not overwritten by reply author              |
-| N07 | Two named users                                                | Both subjects are retained for comparison                        |
-| G01 | General recap, opinion, translation, comparison                | Answer requested task; no required slowdown or yap keyword       |
-| G02 | Persona absent or requester differs from subject               | No invented biography or requester-persona substitution          |
-| G03 | Media in request/reply, late embed, download failure           | Correct source mapping and availability; secure host limits      |
-| G04 | Prompt injection in text/image/name/persona                    | Cannot change system contract or access external data            |
-| G05 | Empty/incomplete/overlong output                               | At most one appropriate correction; direct-specific fallback     |
-| G06 | Valid single-sentence reply without keyword                    | Accepted; no passive validator leakage                           |
-| G07 | Generated mentions/everyone/role tags                          | No unintended Discord notifications                              |
-| C01 | Non-admin attempts direct-config                               | No mutation; owner/Manage Server succeeds                        |
-| C02 | Migrate populated v0.2 database twice                          | Existing rows/settings unchanged; direct defaults false          |
-| C03 | Two guilds use different direct settings                       | Strict isolation                                                 |
-| C04 | Quota zero/first reservation/concurrency/day rollover          | Correct atomic bounds; passive budget unaffected                 |
-| C05 | Disable/remove channel during in-flight request                | Recheck send eligibility; do not post in disabled scope          |
-| C06 | Roll back worker after additive migration                      | Old worker still starts and sees original configuration          |
+| ID  | Case                                                           | Required result                                                   |
+| --- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| P01 | Freddy/Steve alternate three posts each                        | Exactly one passive response per user; separate cooldown/persona  |
+| P02 | Same user posts in two configured channels                     | Existing guild+user passive aggregation preserved                 |
+| P03 | User-list, role-list, overlapping memberships                  | Correct eligibility; one count per message                        |
+| P04 | Unmonitored ordinary posts                                     | No passive response                                               |
+| P05 | Passive images, no persona, relevant/irrelevant persona        | Existing routing and contract unchanged                           |
+| P06 | Direct feature off, monitored user pings bot                   | Exact legacy threshold/address behavior                           |
+| P07 | Direct settings changed                                        | Passive counts/cooldowns remain intact                            |
+| R01 | Enabled monitored user asks about Freddy                       | Direct handler only; no detector call                             |
+| R02 | Unmonitored observer asks for recap                            | Direct handler allowed; full current-channel context              |
+| R03 | Direct request would be third passive message                  | One direct response; passive count remains two                    |
+| R04 | Direct request while requester or subject has passive cooldown | Direct remains eligible                                           |
+| R05 | Cooldown-rejected direct request                               | No LLM, no fallback to passive, explicit log reason               |
+| R06 | Bot/webhook/DM/unapproved guild/unconfigured channel           | Neither lane runs                                                 |
+| R07 | Master disable or direct flag off                              | Master stops both; direct off restores legacy lane                |
+| R08 | Duplicate event/concurrent requests                            | No duplicate reply; atomic cooldown/guard reservation             |
+| R09 | Another user's passive event during direct guild guard         | Passive still operates                                            |
+| H01 | Interleaved human history with bots and duplicates             | Chronological, attributed, filtered evidence                      |
+| H02 | History length/time/text limits                                | Deterministic bounds; request is included once                    |
+| H03 | Worker restart                                                 | Direct recap can read current Discord history                     |
+| H04 | Missing history permission, 404 reply, API timeout             | Bounded fallback; no fabricated context                           |
+| H05 | Another guild/channel or later messages                        | Excluded from the prompt                                          |
+| H06 | Explicit reply older than horizon                              | One labeled same-channel exception, not an unbounded fetch        |
+| N01 | Actual Discord user mention                                    | Stable target identity, even if nickname differs                  |
+| N02 | Freddy/freddy/Freddy's/freddys                                 | Unique supported whole-name match resolves                        |
+| N03 | Shared nickname, partial/common-word collision                 | Clarification; no arbitrary target                                |
+| N04 | Unknown name or resolved user without recent messages          | Honest clarification/missing evidence                             |
+| N05 | Reply plus "this person"                                       | Replied-to author becomes subject                                 |
+| N06 | Explicit different subject in a reply                          | Explicit subject is not overwritten by reply author               |
+| N07 | Two named users                                                | Both subjects are retained for comparison                         |
+| G01 | General recap, opinion, translation, comparison                | Answer requested task; no required slowdown or yap keyword        |
+| G02 | Persona absent or requester differs from subject               | No invented biography or requester-persona substitution           |
+| G03 | Media in request/reply, late embed, download failure           | Correct source mapping and availability; secure host limits       |
+| G04 | Prompt injection in text/image/name/persona                    | Cannot change system contract or access external data             |
+| G05 | Empty/incomplete/overlong output                               | At most one appropriate correction; direct-specific fallback      |
+| G06 | Valid single-sentence reply without keyword                    | Accepted; no passive validator leakage                            |
+| G07 | Generated mentions/everyone/role tags                          | No unintended Discord notifications                               |
+| C01 | Non-admin attempts configure                                   | No mutation; owner/Manage Server succeeds                         |
+| C02 | Migrate populated v0.2 database twice                          | Existing rows/settings unchanged; direct defaults false           |
+| C03 | Two guilds use different direct settings                       | Strict isolation                                                  |
+| C04 | Quota zero/first reservation/concurrency/day rollover          | Correct atomic bounds; passive budget unaffected                  |
+| C05 | Disable/remove channel during in-flight request                | Recheck send eligibility; do not post in disabled scope           |
+| C06 | Roll back worker after additive migration                      | Old worker still starts and sees original configuration           |
+| C07 | Configure direct-only or mixed direct/passive settings         | One atomic save; direct-only edits preserve passive runtime state |
 
 ### Manual test-server script
 
@@ -395,7 +411,7 @@ conversation text: document this and do not add permanent raw-history storage.
 Create a recoverable database backup and record the prior worker image before the
 feature deployment. Do not remove or recreate the database volume. Roll out direct
 responses disabled, verify both guilds, then test-guild opt-in. Immediate mitigation
-is `/yap direct-config enabled:false`; rollback uses the prior worker image without
+is `/yap configure direct-enabled:false`; rollback uses the prior worker image without
 reversing the additive schema migration. Publish v0.3.0 only after acceptance.
 
 ## 10. Follow-on interactions (not release blockers)
