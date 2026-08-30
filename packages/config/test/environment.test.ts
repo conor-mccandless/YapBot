@@ -20,6 +20,7 @@ describe("parseEnvironment", () => {
     expect(result.LOG_LEVEL).toBe("info");
     expect(result.NODE_ENV).toBe("development");
     expect(result.OPENAI_DAILY_GUILD_LIMIT).toBe(100);
+    expect(result.OPENAI_DIRECT_DAILY_GUILD_LIMIT).toBe(50);
     expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(900);
     expect(result.OPENAI_IMAGE_MODEL).toBeUndefined();
     expect(result.OPENAI_LOG_PROMPT_DIAGNOSTICS).toBe(false);
@@ -51,6 +52,21 @@ describe("parseEnvironment", () => {
     expect(result.OPENAI_MAX_OUTPUT_TOKENS).toBe(80);
     expect(result.OPENAI_REASONING_EFFORT).toBe("medium");
     expect(result.OPENAI_TIMEOUT_MS).toBe(5_000);
+  });
+
+  it("allows zero direct quota without changing passive quota", () => {
+    const result = parseEnvironment({
+      ...validEnvironment,
+      OPENAI_DIRECT_DAILY_GUILD_LIMIT: "0",
+    });
+    expect(result.OPENAI_DIRECT_DAILY_GUILD_LIMIT).toBe(0);
+    expect(result.OPENAI_DAILY_GUILD_LIMIT).toBe(100);
+    expect(() =>
+      parseEnvironment({
+        ...validEnvironment,
+        OPENAI_DIRECT_DAILY_GUILD_LIMIT: "-1",
+      }),
+    ).toThrow();
   });
 
   it("treats a blank OpenAI key as disabled", () => {

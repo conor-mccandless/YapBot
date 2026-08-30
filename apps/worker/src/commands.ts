@@ -14,6 +14,7 @@ import {
 } from "discord.js";
 
 const ADMIN_SUBCOMMANDS = new Set([
+  "direct-config",
   "setup",
   "channel-add",
   "channel-remove",
@@ -30,6 +31,7 @@ const ADMIN_SUBCOMMANDS = new Set([
 ]);
 
 export interface CommandContext {
+  directLimiter?: { clearGuild(guildId: string): void };
   allowedGuildIds: ReadonlySet<string>;
   detector: RollingTriggerDetector;
   imageContextStore?: { clearGuild(guildId: string): void };
@@ -60,6 +62,35 @@ export async function handleYapCommand(
   }
 
   switch (subcommand) {
+    case "direct-config": {
+      const enabled = interaction.options.getBoolean("enabled");
+      const cooldown = interaction.options.getInteger("cooldown-seconds");
+      if (
+        (enabled === null && cooldown === null) ||
+        (cooldown !== null &&
+          (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600))
+      ) {
+        await interaction.editReply(
+          "Provide enabled and/or cooldown-seconds (0-3600).",
+        );
+        break;
+      }
+      const updated = await context.repository.configureDirect({
+        actorUserId: interaction.user.id,
+        guildId: interaction.guildId,
+        update: {
+          ...(enabled === null ? {} : { directResponsesEnabled: enabled }),
+          ...(cooldown === null ? {} : { directCooldownSeconds: cooldown }),
+        },
+      });
+      if (updated) context.directLimiter?.clearGuild(interaction.guildId);
+      await interaction.editReply(
+        updated
+          ? "Direct interaction settings saved. Passive counters were not reset. Direct questions also require `/yap enable`; a separate 5-second server guard applies."
+          : "Run `/yap setup` before configuring direct interactions.",
+      );
+      break;
+    }
     case "setup":
       await handleSetup(interaction, context);
       break;
@@ -645,6 +676,7 @@ async function handleDisable(
 }
 
 function clearRuntimeState(context: CommandContext, guildId: string): void {
+  context.directLimiter?.clearGuild(guildId);
   context.detector.clearGuild(guildId);
   context.imageContextStore?.clearGuild(guildId);
   context.messageContextStore?.clearGuild(guildId);
@@ -699,6 +731,8 @@ async function handleStatus(
       `**Channels (${channelIds.length}):** ${channelIds.length > 0 ? channelIds.map((channelId) => `<#${channelId}>`).join(", ") : "not configured"}`,
       `**Threshold:** ${config.threshold} messages / ${config.windowSeconds} seconds`,
       `**Cooldown:** ${config.cooldownSeconds} seconds`,
+      `**Direct questions:** ${config.directResponsesEnabled ? "enabled" : "disabled"} (requires bot enabled)`,
+      `**Direct cooldown:** ${config.directCooldownSeconds} seconds per requester; 5-second server guard`,
       `**Ping target:** ${config.pingTarget ? "yes" : "no"}`,
       `**Triggers today (UTC):** ${triggersToday}`,
       `**Permissions:** ${channelDiagnostics.length === 0 ? "ready" : channelDiagnostics.map((result) => `<#${result.channelId}>: ${result.diagnostic}`).join("; ")}`,

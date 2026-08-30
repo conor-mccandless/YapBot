@@ -24,6 +24,29 @@ export const YAP_COMMAND = new SlashCommandBuilder()
   .setDMPermission(false)
   .addSubcommand((subcommand) =>
     subcommand
+      .setName("direct-config")
+      .setDescription(
+        "Enable direct questions and set a separate per-user cooldown",
+      )
+      .addBooleanOption((option) =>
+        option
+          .setName("enabled")
+          .setDescription(
+            "Allow direct questions from humans in configured channels",
+          ),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("cooldown-seconds")
+          .setDescription(
+            "Direct-question cooldown per requester (0-3600 seconds)",
+          )
+          .setMinValue(0)
+          .setMaxValue(3600),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName("setup")
       .setDescription("Choose an initial user-list member or role and channel")
       .addChannelOption((option) =>

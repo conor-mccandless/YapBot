@@ -6,6 +6,46 @@ OpenAI generation is optional. With an API key, YapBot can use the complete orde
 
 See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 
+The opt-in direct-interaction feature is described in the
+[implementation and acceptance plan](./docs/direct-interactions-implementation-plan.md).
+
+## Direct questions (feature preview)
+
+Direct questions are **disabled by default**. An owner or member with Manage
+Server can enable them in a configured guild:
+
+```text
+/yap direct-config enabled:true cooldown-seconds:30
+```
+
+YapBot must also be enabled with `/yap enable`. Any human in its configured text
+channels can then ask `@YapBot what's going on here?`, ask about another recent
+participant by mention or exact display name/username, or reply to YapBot to
+continue a discussion. A reply to a human needs an explicit YapBot address.
+
+- Direct requests use only recent history from the current channel (up to 25
+  messages from five minutes, plus an explicit same-channel reply).
+- Shared nicknames produce a clarification. Unknown names require a mention or
+  more context; this is not a guild-wide nickname/alias search.
+- Replies use separate prompting: no mandatory slowdown, trigger explanation,
+  yap keyword, or two-sentence requirement. Existing passive responses are unchanged.
+- Direct requests do not increment or reset passive counters, including when a
+  direct cooldown rejects them. Cooldown rejection is silent to avoid bot spam.
+- The configurable per-requester cooldown has a separate 5-second guild guard
+  and in-flight protection. Neither affects passive cooldowns.
+- `OPENAI_DIRECT_DAILY_GUILD_LIMIT` defaults to 50 requests per guild per UTC day;
+  each allows at most two model attempts. It is **additional to** the passive
+  `OPENAI_DAILY_GUILD_LIMIT`, not shared with it. Zero stops direct model calls.
+- Existing secure image handling is available; animated GIF/video recognition is
+  not included. No extra Discord privileges or persistent message-history table.
+- `/yap status` shows direct settings. `/yap direct-config enabled:false` restores
+  legacy ping/threshold behavior. `/yap disable` stops both kinds of response.
+
+For database integration tests, provide `YAPBOT_TEST_DATABASE_URL` pointing only
+to a **fresh disposable** database named `yapbot_direct_test_*`, then run
+`pnpm test`. These tests are skipped without that variable; CI creates its own
+PostgreSQL service and runs them. Never use the live database for test fixtures.
+
 ## Current behavior
 
 - Up to 25 individually selected users and 25 roles per Discord server; a member matching either list is monitored.
@@ -20,7 +60,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
 - No voice-channel monitoring, voice transcription, voice-channel chat, threads, image generation, or dashboard.
-- No Discord message text, image bytes/URLs, or generated response text stored in YapBot's database or application logs.
+- No Discord message text or image bytes stored in YapBot's database. Optional prompt/response diagnostic logs can contain member text, URLs, personas, and generated replies; keep those logs private. Direct diagnostics log metadata always and response text only when `OPENAI_LOG_REJECTED_RESPONSES` is enabled (including successful direct responses).
 
 ## Repository layout
 

@@ -3,6 +3,7 @@ import { and, count, eq, gte, lt } from "drizzle-orm";
 import type { DatabaseConnection } from "./index.js";
 import {
   adminAuditEvent,
+  directLlmDailyUsage,
   guildChannel,
   guildConfig,
   guildMonitoredRole,
@@ -44,12 +45,70 @@ export interface BehaviorUpdate {
   windowSeconds?: number;
 }
 
+export interface DirectConfigUpdate {
+  directResponsesEnabled?: boolean;
+  directCooldownSeconds?: number;
+}
+
 export type SetupTarget =
   | { monitoredRoleId: string; targetType: "role" }
   | { monitoredUserId: string; targetType: "user" };
 
 export class YapBotRepository {
   constructor(private readonly connection: DatabaseConnection) {}
+
+  async configureDirect(input: {
+    actorUserId: string;
+    guildId: string;
+    update: DirectConfigUpdate;
+  }): Promise<boolean> {
+    const cooldown = input.update.directCooldownSeconds;
+    if (
+      Object.keys(input.update).length === 0 ||
+      (cooldown !== undefined &&
+        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600))
+    ) {
+      throw new Error("Invalid direct interaction settings");
+    }
+    return this.connection.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .update(guildConfig)
+        .set({ ...input.update, updatedAt: new Date() })
+        .where(
+          and(
+            eq(guildConfig.guildId, input.guildId),
+            eq(guildConfig.setupComplete, true),
+          ),
+        )
+        .returning({ guildId: guildConfig.guildId });
+      if (rows.length === 0) return false;
+      await transaction.insert(adminAuditEvent).values({
+        actorUserId: input.actorUserId,
+        guildId: input.guildId,
+        commandName: "direct-config",
+        change: input.update,
+      });
+      return true;
+    });
+  }
+
+  async tryReserveDirectGeneration(
+    guildId: string,
+    dailyLimit: number,
+    now = new Date(),
+  ): Promise<boolean> {
+    if (!Number.isInteger(dailyLimit) || dailyLimit <= 0) return false;
+    const usageDate = now.toISOString().slice(0, 10);
+    const rows = await this.connection.client<{ generation_count: number }[]>`
+      insert into direct_llm_daily_usage (guild_id, usage_date, generation_count)
+      values (${guildId}, ${usageDate}, 1)
+      on conflict (guild_id, usage_date) do update
+      set generation_count = direct_llm_daily_usage.generation_count + 1
+      where direct_llm_daily_usage.generation_count < ${dailyLimit}
+      returning generation_count
+    `;
+    return rows.length > 0;
+  }
 
   async getGuildConfig(guildId: string): Promise<GuildConfig | undefined> {
     return this.connection.database.query.guildConfig.findFirst({
@@ -739,6 +798,9 @@ export class YapBotRepository {
       await transaction
         .delete(llmDailyUsage)
         .where(lt(llmDailyUsage.usageDate, usageCutoff));
+      await transaction
+        .delete(directLlmDailyUsage)
+        .where(lt(directLlmDailyUsage.usageDate, usageCutoff));
     });
   }
 }

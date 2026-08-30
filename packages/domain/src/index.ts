@@ -1,3 +1,5 @@
+export * from "./direct.js";
+
 export const BEHAVIOR_BOUNDS = {
   cooldownSeconds: { maximum: 86_400, minimum: 0 },
   threshold: { maximum: 100, minimum: 3 },

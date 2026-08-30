@@ -5,11 +5,21 @@ import {
   REQUIRED_GATEWAY_INTENTS,
   YAP_COMMAND_JSON,
 } from "@yapbot/discord";
-import { KeyedMutex, RollingTriggerDetector } from "@yapbot/domain";
+import {
+  DirectInteractionLimiter,
+  KeyedMutex,
+  RollingTriggerDetector,
+  selectInteractionLane,
+} from "@yapbot/domain";
 import { ChannelType, Client, Events } from "discord.js";
 import type { Logger } from "pino";
 
 import { handleYapCommand } from "./commands.js";
+import {
+  isDirectDiscordAddress,
+  runDirectDiscordInteraction,
+} from "./direct-discord.js";
+import { createDirectModelRequest } from "./direct-generator.js";
 import { refreshConversationImages } from "./image-preview-refresh.js";
 import {
   collectDiscordMessageImages,
@@ -50,6 +60,8 @@ export async function startWorker(
   });
   const allowedGuildIds = new Set(environment.ALLOWED_GUILD_IDS);
   const detector = new RollingTriggerDetector();
+  const directLimiter = new DirectInteractionLimiter();
+  const directModel = createDirectModelRequest(environment);
   const imageContextStore = new RecentImageContextStore();
   const messageContextStore = new RecentMessageContextStore();
   const mutex = new KeyedMutex();
@@ -77,6 +89,7 @@ export async function startWorker(
         botUserId: readyClient.user.id,
         openAIEnabled: responseGenerator.openAIConfigured,
         imagePreviewRefreshEnabled: true,
+        directInteractionsSupported: true,
         promptDiagnosticsEnabled: environment.OPENAI_LOG_PROMPT_DIAGNOSTICS,
         rejectedResponseDiagnosticsEnabled:
           environment.OPENAI_LOG_REJECTED_RESPONSES,
@@ -121,6 +134,7 @@ export async function startWorker(
 
     try {
       await handleYapCommand(interaction, {
+        directLimiter,
         allowedGuildIds,
         detector,
         imageContextStore,
@@ -161,6 +175,40 @@ export async function startWorker(
       return;
     }
 
+    // Direct requests bypass passive target filtering, counters and mutex. The
+    // direct limiter atomically reserves its own cooldown/in-flight ticket.
+    try {
+      const directConfig = await repository.getGuildConfig(message.guildId);
+      if (
+        directConfig?.enabled &&
+        directConfig.setupComplete &&
+        directConfig.directResponsesEnabled &&
+        (directConfig.channelId === message.channelId ||
+          (await repository.isGuildChannelAllowed(
+            message.guildId,
+            message.channelId,
+          ))) &&
+        selectInteractionLane(true, await isDirectDiscordAddress(message)) ===
+          "direct"
+      ) {
+        await runDirectDiscordInteraction(
+          message,
+          directConfig,
+          repository,
+          directLimiter,
+          directModel,
+          environment,
+          logger,
+        );
+        return;
+      }
+    } catch (error) {
+      logger.error(
+        { error, guildId: message.guildId },
+        "Direct routing failed",
+      );
+      return;
+    }
     const key = `${message.guildId}:${message.author.id}`;
     await mutex.runExclusive(key, async () => {
       const config = await repository.getGuildConfig(message.guildId);
@@ -508,6 +556,7 @@ export async function startWorker(
   await client.login(environment.DISCORD_TOKEN);
 
   const sweepInterval = setInterval(() => {
+    directLimiter.sweep(Date.now());
     detector.sweep(Date.now(), 86_400 + 3_600);
     imageContextStore.sweep(Date.now(), 86_400 + 3_600);
     messageContextStore.sweep(Date.now(), 86_400 + 3_600);

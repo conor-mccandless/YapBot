@@ -1,11 +1,44 @@
 # YapBot direct interactions: implementation and acceptance plan
 
-Status: planned, not implemented. Target release: v0.3.0 (opt-in minor feature).
+Status: implemented as an opt-in feature preview on `codex/direct-interactions-v1`;
+automated verification is complete and real Discord acceptance is still
+required. Target release: v0.3.0 (not yet tagged or promoted).
 
 This document records the direct-question feature discussed with the project
 owner. It is separate from the image-preview bug fix on
-`codex/image-preview-refresh`. Do not interpret its examples as behavior already
-deployed. Use a new `codex/direct-interactions-v1` branch for implementation.
+`codex/image-preview-refresh`. The larger follow-ons in section 10 remain planned.
+Direct interactions remain disabled in existing guilds until explicitly enabled.
+
+### Verification completed (2026-08-30)
+
+- 158 automated tests passed, including five real PostgreSQL upgrade, persistence,
+  authorization-at-repository-boundary, and quota tests in a disposable database.
+  Worker orchestration tests cover independent passive counters, direct requests
+  from unmonitored users, third-message bypass, cooldown rejection, and replies.
+- Type checking, lint, full-repository formatting checks, and container build passed.
+- Four synthetic conversations were tested against the configured model without
+  posting to Discord: channel recap, a participant asking about another user,
+  plain-name subject lookup, and an unknown name. All completed on the first
+  attempt, used the intended subject, and omitted passive slowdown requirements.
+- Example recap: "Freddy is trying to rebrand coffee and one biscuit as breakfast;
+  Steve is unsuccessfully defending nutrition. It's a tiny culinary fraud trial."
+- Real-user manual acceptance, image-question quality, and multi-account live
+  cooldown testing remain required before a v0.3.0 release tag.
+
+### Implementation notes
+
+- Separate direct routing, admission, channel/reply evidence, subject resolution,
+  generator, quota ledger, admin command, and diagnostics are implemented.
+- Passive prompting/validation and existing configuration values remain unchanged.
+- Unknown-name handling is an explicit model instruction when no exact recent
+  participant matches; duplicated known aliases get deterministic clarification.
+  Common-word names are not inferred from ordinary prose; mention them explicitly.
+- History evidence is ephemeral. There is no additional channel-content database.
+- Current validation enforces completion, nonempty output, size and mention safety;
+  image/identity grounding and conversational quality still need live acceptance.
+- Provider requests follow the official [Responses API reference](https://developers.openai.com/api/reference/typescript/resources/responses/methods/create):
+  separate instructions and untrusted user context, multimodal inputs, bounded
+  output, and `store: false`. The model and reasoning settings are unchanged.
 
 ## 1. Objective
 

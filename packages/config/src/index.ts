@@ -45,6 +45,12 @@ export const environmentSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   OPENAI_API_KEY: optionalSecretSchema,
+  OPENAI_DIRECT_DAILY_GUILD_LIMIT: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10_000)
+    .default(50),
   OPENAI_DAILY_GUILD_LIMIT: z.coerce
     .number()
     .int()

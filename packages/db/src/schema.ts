@@ -21,6 +21,12 @@ export const guildConfig = pgTable(
       .notNull()
       .defaultNow(),
     enabled: boolean("enabled").notNull().default(false),
+    directResponsesEnabled: boolean("direct_responses_enabled")
+      .notNull()
+      .default(false),
+    directCooldownSeconds: integer("direct_cooldown_seconds")
+      .notNull()
+      .default(30),
     guildId: varchar("guild_id", { length: 20 }).primaryKey(),
     monitoredRoleId: varchar("monitored_role_id", { length: 20 }),
     monitoredUserId: varchar("monitored_user_id", { length: 20 }),
@@ -34,6 +40,10 @@ export const guildConfig = pgTable(
     windowSeconds: integer("window_seconds").notNull().default(300),
   },
   (table) => [
+    check(
+      "guild_config_direct_cooldown_check",
+      sql`${table.directCooldownSeconds} between 0 and 3600`,
+    ),
     check(
       "guild_config_threshold_check",
       sql`${table.threshold} between 3 and 100`,
@@ -75,6 +85,22 @@ export const llmDailyUsage = pgTable(
     usageDate: date("usage_date").notNull(),
   },
   (table) => [primaryKey({ columns: [table.guildId, table.usageDate] })],
+);
+
+export const directLlmDailyUsage = pgTable(
+  "direct_llm_daily_usage",
+  {
+    guildId: varchar("guild_id", { length: 20 }).notNull(),
+    usageDate: date("usage_date").notNull(),
+    generationCount: integer("generation_count").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.guildId, table.usageDate] }),
+    check(
+      "direct_llm_daily_usage_generation_count_check",
+      sql`${table.generationCount} >= 0`,
+    ),
+  ],
 );
 
 export const guildChannel = pgTable(
@@ -175,6 +201,7 @@ export const adminAuditEvent = pgTable(
 );
 
 export const schema = {
+  directLlmDailyUsage,
   adminAuditEvent,
   guildChannel,
   guildConfig,
