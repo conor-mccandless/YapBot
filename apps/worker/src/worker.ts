@@ -10,6 +10,7 @@ import { ChannelType, Client, Events } from "discord.js";
 import type { Logger } from "pino";
 
 import { handleYapCommand } from "./commands.js";
+import { refreshConversationImages } from "./image-preview-refresh.js";
 import {
   collectDiscordMessageImages,
   downloadDiscordImages,
@@ -75,6 +76,7 @@ export async function startWorker(
         approvedGuildCount: environment.ALLOWED_GUILD_IDS.length,
         botUserId: readyClient.user.id,
         openAIEnabled: responseGenerator.openAIConfigured,
+        imagePreviewRefreshEnabled: true,
         promptDiagnosticsEnabled: environment.OPENAI_LOG_PROMPT_DIAGNOSTICS,
         rejectedResponseDiagnosticsEnabled:
           environment.OPENAI_LOG_REJECTED_RESPONSES,
@@ -265,21 +267,61 @@ export async function startWorker(
           userId: message.author.id,
           windowSeconds: config.windowSeconds,
         });
-        const recentMessages = messageContextStore.getRecent({
+        const storedMessages = messageContextStore.getRecent({
           guildId: message.guildId,
           limit: config.threshold,
           nowMs,
           userId: message.author.id,
           windowSeconds: config.windowSeconds,
         });
-        const recentMessageIds = new Set(
-          recentMessages.map((recentMessage) => recentMessage.messageId),
-        );
-        const conversationImageReferences = recentImages.filter(
-          (image) =>
-            image.sourceMessageId !== undefined &&
-            recentMessageIds.has(image.sourceMessageId),
-        );
+        const refreshed = await refreshConversationImages({
+          guildId: message.guildId,
+          userId: message.author.id,
+          messages: storedMessages,
+          imageReferences: recentImages,
+          fetchMessage: async (source) => {
+            const channel = client.channels.cache.get(source.channelId);
+            if (
+              channel?.type !== ChannelType.GuildText ||
+              channel.guildId !== message.guildId
+            ) {
+              throw new Error("Preview source channel unavailable");
+            }
+            const fresh = await channel.messages.fetch({
+              message: source.messageId,
+              force: true,
+              cache: false,
+            });
+            return {
+              id: fresh.id,
+              guildId: fresh.guildId,
+              channelId: fresh.channelId,
+              authorId: fresh.author.id,
+              content: fresh.content,
+              attachments: [...fresh.attachments.values()],
+              embedImageUrls: fresh.embeds.flatMap((embed) =>
+                [
+                  embed.image?.proxyURL,
+                  embed.thumbnail?.proxyURL,
+                  embed.image?.url,
+                  embed.thumbnail?.url,
+                ].filter((url): url is string => url !== undefined),
+              ),
+            };
+          },
+        });
+        const recentMessages = refreshed.messages;
+        const conversationImageReferences = refreshed.imageReferences;
+        if (refreshed.diagnostics.candidateCount > 0) {
+          logger.info(
+            {
+              guildId: message.guildId,
+              userId: message.author.id,
+              ...refreshed.diagnostics,
+            },
+            "Refreshed Discord image previews",
+          );
+        }
         const images = responseGenerator.openAIConfigured
           ? await downloadDiscordImages(conversationImageReferences)
           : [];
