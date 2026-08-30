@@ -1,7 +1,7 @@
 import type { DiscordImageReference } from "./image-context.js";
 import type { YapImageContext } from "./response-generator.js";
 
-export const DEFAULT_DIRECT_CONTEXT_MINUTES = 30;
+export const DEFAULT_DIRECT_CONTEXT_MINUTES = 180;
 export const DIRECT_CONTEXT_MESSAGES = 40;
 export const DIRECT_CONTEXT_CHARACTERS = 20_000;
 

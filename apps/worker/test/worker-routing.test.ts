@@ -99,7 +99,7 @@ const config = {
   setupComplete: true,
   directResponsesEnabled: false,
   directCooldownSeconds: 30,
-  directContextMinutes: 30,
+  directContextMinutes: 180,
   targetType: "role",
   monitoredRoleId: "role",
   monitoredUserId: null,
@@ -131,7 +131,7 @@ beforeEach(async () => {
   messages.clear();
   serial = 0;
   config.directResponsesEnabled = false;
-  config.directContextMinutes = 30;
+  config.directContextMinutes = 180;
   config.enabled = true;
   repository.isGuildChannelAllowed.mockReset().mockResolvedValue(false);
   harness.directModel.mockResolvedValue({

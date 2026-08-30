@@ -29,7 +29,7 @@ export const guildConfig = pgTable(
       .default(30),
     directContextMinutes: integer("direct_context_minutes")
       .notNull()
-      .default(30),
+      .default(180),
     guildId: varchar("guild_id", { length: 20 }).primaryKey(),
     monitoredRoleId: varchar("monitored_role_id", { length: 20 }),
     monitoredUserId: varchar("monitored_user_id", { length: 20 }),

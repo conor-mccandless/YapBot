@@ -54,6 +54,23 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
     await connection.client`insert into user_persona (guild_id,user_id,description) values (${guild},'300000000000000001','Coffee critic')`;
     before =
       await connection.client`select to_jsonb(t) as config from guild_config t order by guild_id`;
+    // Exercise the deployed 30-minute schema before applying the new default.
+    const previousWindow = await mkdtemp(
+      path.join(tmpdir(), "yapbot-window-migrations-"),
+    );
+    try {
+      for (const name of await readdir(migrations)) {
+        if (/^000[89]_.*\.sql$/u.test(name))
+          await copyFile(
+            path.join(migrations, name),
+            path.join(previousWindow, name),
+          );
+      }
+      await runMigrations(connection.client, previousWindow);
+    } finally {
+      await rm(previousWindow, { recursive: true, force: true });
+    }
+    await connection.client`update guild_config set direct_context_minutes=90 where guild_id=${other}`;
     await runMigrations(connection.client, migrations);
   }, 30_000);
   afterAll(async () => {
@@ -71,10 +88,10 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
       (await repository.getGuildConfig(other))?.directCooldownSeconds,
     ).toBe(30);
     expect((await repository.getGuildConfig(guild))?.directContextMinutes).toBe(
-      30,
+      180,
     );
     expect((await repository.getGuildConfig(other))?.directContextMinutes).toBe(
-      30,
+      90,
     );
     expect(await repository.getGuildChannelIds(guild)).toEqual([
       "200000000000000001",
@@ -178,6 +195,9 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
     const incomplete = "100000000000000003";
     await connection.client`insert into guild_config (guild_id) values (${incomplete})`;
     expect(
+      (await repository.getGuildConfig(incomplete))?.directContextMinutes,
+    ).toBe(180);
+    expect(
       await repository.configureGuild({
         actorUserId: "1",
         guildId: incomplete,
@@ -237,6 +257,17 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
     await expect(
       connection.client`update guild_config set direct_context_minutes=1441 where guild_id=${guild}`,
     ).rejects.toThrow();
+  });
+  it("does not reapply the default to later configured thirty-minute windows", async () => {
+    await repository.configureGuild({
+      actorUserId: "1",
+      guildId: other,
+      update: { directContextMinutes: 30 },
+    });
+    await runMigrations(connection.client, migrations);
+    expect((await repository.getGuildConfig(other))?.directContextMinutes).toBe(
+      30,
+    );
   });
   it("handles zero quota before first insert and atomic concurrent limits", async () => {
     const now = new Date("2026-08-30T12:00:00Z");

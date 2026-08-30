@@ -27,8 +27,8 @@ Direct settings share `/yap configure` with passive settings. `cooldown-seconds`
 still controls passive replies; `direct-cooldown-seconds` controls direct questions.
 Omitted settings stay unchanged, and direct-only edits leave passive counters intact.
 
-The direct context window defaults to **30 minutes per server**. To look back
-further, use `/yap configure direct-context-minutes:120` for two hours. The saved
+The direct context window defaults to **180 minutes (three hours) per server**.
+Use `/yap configure direct-context-minutes:360` for six hours. The saved
 range is 1–1,440 minutes (24 hours); `/yap status` shows the current setting.
 
 - Direct requests use only recent history from the current channel (up to 40
@@ -510,7 +510,7 @@ The command is restricted to the owner or members with **Manage Server**. Every 
 | `ping-target`             | `true`                    | Mentions the triggering member in YapBot's reply. Other mentions are suppressed.                                                |
 | `direct-enabled`          | `false`                   | Allows direct questions in configured channels while YapBot is enabled.                                                         |
 | `direct-cooldown-seconds` | `30`                      | Separate per-requester cooldown for direct questions (0–3,600 seconds).                                                         |
-| `direct-context-minutes`  | `30`                      | Direct history lookback (1–1,440 minutes), still bounded to 40 human messages from the latest 50 and 20,000 content characters. |
+| `direct-context-minutes`  | `180`                     | Direct history lookback (1–1,440 minutes), still bounded to 40 human messages from the latest 50 and 20,000 content characters. |
 
 Updating passive options clears current in-memory counters, cooldowns, message text,
 and image references for that server. Direct-only updates preserve passive state.

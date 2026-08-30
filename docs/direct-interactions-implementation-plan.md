@@ -83,6 +83,19 @@ Direct interactions remain disabled in existing guilds until explicitly enabled.
   direct remains enabled only in the test guild. The database backup is retained,
   and the disposable test database was removed. No release tag or GitHub push.
 
+### Three-hour default follow-up (2026-08-30)
+
+- Migration `0010_direct_context_three_hours.sql` changes the default to 180
+  minutes and updates existing 30-minute windows once. Other configured windows
+  are preserved; future `/yap configure` changes are not reset on restart.
+- All 200 tests passed, including preservation of a preexisting custom window,
+  defaults for new guilds, the three-hour boundary, and migration idempotency.
+  Type checking, lint, formatting, and container build passed.
+- Deployed image begins `d08913ac377a`. Both live guilds now have a 180-minute
+  window, and both registered the updated option description. Other configuration
+  checksums match. Cooldowns and direct-enabled switches are unchanged. Backup
+  retained; disposable test database removed. No release tag or GitHub push.
+
 ### Implementation notes
 
 - Separate direct routing, admission, channel/reply evidence, subject resolution,
@@ -189,7 +202,7 @@ Current defaults and configurable bounds:
 
 - Fetch one page of at most 50 recent channel messages.
 - Keep at most 40 relevant messages within the server's configured lookback,
-  default 30 minutes. `/yap configure direct-context-minutes:<1-1440>` persists
+  default 180 minutes (three hours). `/yap configure direct-context-minutes:<1-1440>` persists
   a different window per server, up to 24 hours. Message/text/image caps still apply;
   this does not paginate through every message in a busy channel's time window.
 - Exclude messages newer than the request, duplicates, bots, webhooks, and system
@@ -319,9 +332,11 @@ Add a new migration after the current applied migrations (do not edit old files)
 - `guild_config.direct_cooldown_seconds`: integer, not null, default 30; check
   0 through 3600. Zero disables the per-user timer, not the guild guard/in-flight
   protection.
-- `guild_config.direct_context_minutes`: integer, not null, default 30; check
-  1 through 1440. Added by migration `0009_direct_context_window.sql`; existing
-  guilds receive the 30-minute default without changing their other settings.
+- `guild_config.direct_context_minutes`: integer, not null, default 180; check
+  1 through 1440. Added by migration `0009_direct_context_window.sql`, then
+  migration `0010_direct_context_three_hours.sql` raises the default to three
+  hours and moves existing 30-minute windows to 180. Other window values and
+  unrelated settings are preserved; later administrator changes remain saved.
 - Separate direct daily usage, e.g. `direct_llm_daily_usage(guild_id, usage_date,
 generation_count)` with a composite primary key. Keep the existing passive
   usage table and its interpretation intact.

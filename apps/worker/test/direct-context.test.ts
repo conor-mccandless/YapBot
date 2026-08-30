@@ -122,7 +122,7 @@ describe("bounded channel evidence", () => {
         msg("foreign", "secret", freddy, { channelId: "other" }),
         msg("guild", "secret", freddy, { guildId: "other" }),
         msg("old", "old", freddy, {
-          createdAtMs: request("").createdAtMs - 1_801_000,
+          createdAtMs: request("").createdAtMs - 10_801_000,
         }),
         msg("future", "new", steve, { createdAtMs: 500_000 }),
         msg("system", "x", steve, { ignored: true }),
@@ -135,7 +135,7 @@ describe("bounded channel evidence", () => {
   });
   it("includes one explicit older reply or referenced YapBot answer", () => {
     const old = msg("old", "Coffee rollout", bot, {
-      createdAtMs: request("").createdAtMs - 1_801_000,
+      createdAtMs: request("").createdAtMs - 10_801_000,
     });
     const context = buildDirectContext(request("why?"), history, bot.id, old);
     expect(context.repliedTo?.id).toBe("old");
@@ -169,26 +169,26 @@ describe("bounded channel evidence", () => {
     expect(context.recentConversation.length).toBeLessThanOrEqual(40);
     expect(context.recentConversation.some((m) => m.id === "f")).toBe(true);
   });
-  it("defaults to thirty minutes, including the boundary but nothing older", () => {
-    const now = 2_000_000;
+  it("defaults to three hours, including the boundary but nothing older", () => {
+    const now = 20_000_000;
     const context = buildDirectContext(
       request("what is Freddy saying?", { createdAtMs: now }),
       [
         msg("old", "outside the window", freddy, {
-          createdAtMs: now - 1_800_001,
+          createdAtMs: now - 10_800_001,
         }),
         msg("boundary", "still relevant", freddy, {
-          createdAtMs: now - 1_800_000,
+          createdAtMs: now - 10_800_000,
         }),
-        msg("twenty-five-minutes", "Coffee is a meal.", freddy, {
-          createdAtMs: now - 1_500_000,
+        msg("two-hours", "Coffee is a meal.", freddy, {
+          createdAtMs: now - 7_200_000,
         }),
       ],
       bot.id,
     );
     expect(context.recentConversation.map((m) => m.id)).toEqual([
       "boundary",
-      "twenty-five-minutes",
+      "two-hours",
     ]);
     expect(context.subjectResolution.subjects).toEqual([freddy]);
   });
@@ -212,7 +212,7 @@ describe("bounded channel evidence", () => {
     );
     expect(context.subjectResolution.subjects).toEqual([freddy]);
     expect(context.recentConversation).toEqual([]);
-    expect(context.contextLimitations.join(" ")).toContain("30 minutes");
+    expect(context.contextLimitations.join(" ")).toContain("180 minutes");
     expect(context.contextLimitations.join(" ")).toContain(
       "not proof that nobody said anything",
     );

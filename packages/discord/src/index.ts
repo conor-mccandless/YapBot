@@ -177,7 +177,7 @@ export const YAP_COMMAND = new SlashCommandBuilder()
         option
           .setName("direct-context-minutes")
           .setDescription(
-            "Direct-question history lookback (1-1440 minutes; default 30)",
+            "Direct-question history lookback (1-1440 minutes; default 180 / 3 hours)",
           )
           .setMinValue(1)
           .setMaxValue(1440),
