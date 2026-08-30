@@ -82,6 +82,46 @@ describe("direct configuration authorization", () => {
     await f.run();
     expect(f.context.repository.configureGuild).not.toHaveBeenCalled();
   });
+  it.each([1, 60, 1440])(
+    "saves a %s-minute context window without resetting passive state",
+    async (minutes) => {
+      const f = fixture(true, { "direct-context-minutes": minutes });
+      await f.run();
+      expect(f.context.repository.configureGuild).toHaveBeenCalledWith({
+        actorUserId: "actor",
+        guildId: "g",
+        update: { directContextMinutes: minutes },
+      });
+      expect(f.context.detector.clearGuild).not.toHaveBeenCalled();
+      expect(f.context.imageContextStore.clearGuild).not.toHaveBeenCalled();
+      expect(f.context.messageContextStore.clearGuild).not.toHaveBeenCalled();
+      expect(f.context.directLimiter.clearGuild).toHaveBeenCalledWith("g");
+      expect(f.interaction.editReply).toHaveBeenCalledWith(
+        expect.stringContaining(`Direct context lookback: ${minutes} minutes`),
+      );
+    },
+  );
+  it.each([0, 1441, 1.5])(
+    "rejects invalid context window %s before any mixed update",
+    async (minutes) => {
+      const f = fixture(true, {
+        "direct-context-minutes": minutes,
+        threshold: 5,
+      });
+      await f.run();
+      expect(f.context.repository.configureGuild).not.toHaveBeenCalled();
+      expect(f.context.directLimiter.clearGuild).not.toHaveBeenCalled();
+      expect(f.context.detector.clearGuild).not.toHaveBeenCalled();
+    },
+  );
+  it("requires Manage Server to change only the context window", async () => {
+    const f = fixture(false, { "direct-context-minutes": 120 });
+    await f.run();
+    expect(f.context.repository.configureGuild).not.toHaveBeenCalled();
+    expect(f.interaction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("Manage Server"),
+    );
+  });
   it("keeps passive-only options independent and resets runtime state", async () => {
     const f = fixture(true, {
       threshold: 5,
@@ -110,6 +150,7 @@ describe("direct configuration authorization", () => {
       "cooldown-seconds": 60,
       "direct-enabled": true,
       "direct-cooldown-seconds": 10,
+      "direct-context-minutes": 120,
     });
     await f.run();
     expect(f.context.repository.configureGuild).toHaveBeenCalledTimes(1);
@@ -120,6 +161,7 @@ describe("direct configuration authorization", () => {
         cooldownSeconds: 60,
         directResponsesEnabled: true,
         directCooldownSeconds: 10,
+        directContextMinutes: 120,
       },
     });
     expect(f.context.detector.clearGuild).toHaveBeenCalledTimes(1);
@@ -156,5 +198,26 @@ describe("direct configuration authorization", () => {
     await expect(f.run()).rejects.toThrow("Database unavailable");
     expect(f.context.detector.clearGuild).not.toHaveBeenCalled();
     expect(f.context.directLimiter.clearGuild).not.toHaveBeenCalled();
+  });
+  it("shows the saved context window in status", async () => {
+    const f = fixture(false);
+    f.interaction.options.getSubcommand = () => "status";
+    Object.assign(f.context.repository, {
+      getGuildConfig: vi.fn().mockResolvedValue({
+        directContextMinutes: 120,
+        directCooldownSeconds: 30,
+        channelId: null,
+        monitoredUserId: null,
+        monitoredRoleId: null,
+      }),
+      countTriggersToday: vi.fn().mockResolvedValue(0),
+      getGuildChannelIds: vi.fn().mockResolvedValue([]),
+      getGuildMonitoredUserIds: vi.fn().mockResolvedValue([]),
+      getGuildMonitoredRoleIds: vi.fn().mockResolvedValue([]),
+    });
+    await f.run();
+    expect(f.interaction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("**Direct context:** 120 minutes"),
+    );
   });
 });

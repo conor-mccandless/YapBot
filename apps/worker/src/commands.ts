@@ -546,6 +546,20 @@ async function handleConfigure(
   const directCooldownSeconds = interaction.options.getInteger(
     "direct-cooldown-seconds",
   );
+  const directContextMinutes = interaction.options.getInteger(
+    "direct-context-minutes",
+  );
+  if (
+    directContextMinutes !== null &&
+    (!Number.isInteger(directContextMinutes) ||
+      directContextMinutes < 1 ||
+      directContextMinutes > 1440)
+  ) {
+    await interaction.editReply(
+      "direct-context-minutes must be an integer from 1 to 1440.",
+    );
+    return;
+  }
   if (
     directCooldownSeconds !== null &&
     (!Number.isInteger(directCooldownSeconds) ||
@@ -567,6 +581,7 @@ async function handleConfigure(
     ...passiveUpdate,
     ...(directResponsesEnabled === null ? {} : { directResponsesEnabled }),
     ...(directCooldownSeconds === null ? {} : { directCooldownSeconds }),
+    ...(directContextMinutes === null ? {} : { directContextMinutes }),
   };
 
   if (Object.keys(update).length === 0) {
@@ -595,8 +610,13 @@ async function handleConfigure(
       (hasPassiveUpdate
         ? "Runtime counters were reset."
         : "Passive counters were not reset.") +
-      (directResponsesEnabled !== null || directCooldownSeconds !== null
+      (directResponsesEnabled !== null ||
+      directCooldownSeconds !== null ||
+      directContextMinutes !== null
         ? " Direct questions also require `/yap enable`; a separate 5-second server guard applies."
+        : "") +
+      (directContextMinutes !== null
+        ? ` Direct context lookback: ${directContextMinutes} minutes (up to 40 human messages from the latest 50 channel messages).`
         : ""),
   );
 }
@@ -735,6 +755,7 @@ async function handleStatus(
       `**Cooldown:** ${config.cooldownSeconds} seconds`,
       `**Direct questions:** ${config.directResponsesEnabled ? "enabled" : "disabled"} (requires bot enabled)`,
       `**Direct cooldown:** ${config.directCooldownSeconds} seconds per requester; 5-second server guard`,
+      `**Direct context:** ${config.directContextMinutes} minutes; up to 40 human messages from the latest 50 channel messages`,
       `**Ping target:** ${config.pingTarget ? "yes" : "no"}`,
       `**Triggers today (UTC):** ${triggersToday}`,
       `**Permissions:** ${channelDiagnostics.length === 0 ? "ready" : channelDiagnostics.map((result) => `<#${result.channelId}>: ${result.diagnostic}`).join("; ")}`,

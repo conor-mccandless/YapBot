@@ -18,6 +18,7 @@ function services(): DirectServices {
     botId: bot.id,
     limiter: new DirectInteractionLimiter(),
     cooldownSeconds: 30,
+    contextMinutes: 30,
     dailyLimit: 50,
     repository: {
       tryReserveDirectGeneration: vi.fn().mockResolvedValue(true),

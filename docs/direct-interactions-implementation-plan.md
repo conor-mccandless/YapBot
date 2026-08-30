@@ -65,6 +65,24 @@ Direct interactions remain disabled in existing guilds until explicitly enabled.
   direct remains enabled only in the test guild, with a 30-second cooldown.
   The disposable test database was removed. No release tag or GitHub push.
 
+### Configurable context-window follow-up (2026-08-30)
+
+- Migration `0009_direct_context_window.sql` adds a per-guild context window,
+  defaulting existing and new guilds to 30 minutes. The owner/Manage Server-only
+  `/yap configure direct-context-minutes:<1-1440>` option changes it immediately;
+  `/yap status` and direct diagnostics show the configured value.
+- The 40-message, 20,000-character content, and three-image caps remain unchanged.
+  History still comes from one page of the latest 50 channel messages, so a longer
+  time window does not guarantee coverage of every message in a busy channel.
+- All 199 tests passed, including 12 PostgreSQL tests; type checking, lint,
+  formatting, and image build passed. Coverage includes window boundaries,
+  runtime use of the saved value, persistence, guild isolation, authorization,
+  status output, and migration preservation.
+- Worker image begins `944669b51543`. Both guilds registered the new option and
+  have a 30-minute context window. All preexisting configuration checksums match;
+  direct remains enabled only in the test guild. The database backup is retained,
+  and the disposable test database was removed. No release tag or GitHub push.
+
 ### Implementation notes
 
 - Separate direct routing, admission, channel/reply evidence, subject resolution,
@@ -167,10 +185,13 @@ Prefer bounded on-demand Discord history retrieval over a new persistent message
 store. `ReadMessageHistory` is already a required permission, and this lets a
 recap work immediately after a worker restart.
 
-Current fixed defaults:
+Current defaults and configurable bounds:
 
 - Fetch one page of at most 50 recent channel messages.
-- Keep at most 40 relevant messages from the preceding 900 seconds (15 minutes).
+- Keep at most 40 relevant messages within the server's configured lookback,
+  default 30 minutes. `/yap configure direct-context-minutes:<1-1440>` persists
+  a different window per server, up to 24 hours. Message/text/image caps still apply;
+  this does not paginate through every message in a busy channel's time window.
 - Exclude messages newer than the request, duplicates, bots, webhooks, and system
   events. Include the request exactly once as the request, not as prior evidence.
 - Sort chronologically; retain author ID, username, display name, message ID,
@@ -298,6 +319,9 @@ Add a new migration after the current applied migrations (do not edit old files)
 - `guild_config.direct_cooldown_seconds`: integer, not null, default 30; check
   0 through 3600. Zero disables the per-user timer, not the guild guard/in-flight
   protection.
+- `guild_config.direct_context_minutes`: integer, not null, default 30; check
+  1 through 1440. Added by migration `0009_direct_context_window.sql`; existing
+  guilds receive the 30-minute default without changing their other settings.
 - Separate direct daily usage, e.g. `direct_llm_daily_usage(guild_id, usage_date,
 generation_count)` with a composite primary key. Keep the existing passive
   usage table and its interpretation intact.
@@ -308,13 +332,14 @@ Command:
 
 ```text
 /yap configure direct-enabled:true direct-cooldown-seconds:30
+/yap configure direct-context-minutes:120
 ```
 
 Use the existing `/yap configure` command and its owner/Manage Server runtime
 check; do not add another subcommand. Keep `cooldown-seconds` for passive replies
 and `direct-cooldown-seconds` for direct questions. Reject empty/out-of-range
 updates, audit one atomic save (including mixed passive/direct updates), and show
-direct enabled/cooldown status in `/yap status`. Omitted settings remain unchanged.
+direct enabled/cooldown/context status in `/yap status`. Omitted settings remain unchanged.
 Apply settings immediately without re-running setup. Direct-only changes must
 not clear passive counters; updates containing passive options retain the existing
 all-state reset behavior.

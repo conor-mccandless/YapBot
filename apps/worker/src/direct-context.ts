@@ -1,7 +1,7 @@
 import type { DiscordImageReference } from "./image-context.js";
 import type { YapImageContext } from "./response-generator.js";
 
-export const DIRECT_CONTEXT_SECONDS = 900;
+export const DEFAULT_DIRECT_CONTEXT_MINUTES = 30;
 export const DIRECT_CONTEXT_MESSAGES = 40;
 export const DIRECT_CONTEXT_CHARACTERS = 20_000;
 
@@ -144,7 +144,15 @@ export function buildDirectContext(
   botId: string,
   reply?: DirectMessage,
   limitations: string[] = [],
+  contextMinutes = DEFAULT_DIRECT_CONTEXT_MINUTES,
 ): DirectContext {
+  if (
+    !Number.isInteger(contextMinutes) ||
+    contextMinutes < 1 ||
+    contextMinutes > 1440
+  ) {
+    throw new Error("Direct context minutes must be an integer from 1 to 1440");
+  }
   const sameScope = (message: DirectMessage) =>
     message.guildId === request.guildId &&
     message.channelId === request.channelId &&
@@ -157,7 +165,7 @@ export function buildDirectContext(
     (!reply.author.bot || reply.author.id === botId)
       ? reply
       : undefined;
-  const windowStart = request.createdAtMs - DIRECT_CONTEXT_SECONDS * 1_000;
+  const windowStart = request.createdAtMs - contextMinutes * 60_000;
   const candidates = [
     ...new Map(
       history
@@ -212,7 +220,7 @@ export function buildDirectContext(
     );
   if (selected.length === 0 && !boundedReply)
     contextLimitations.push(
-      `No channel conversation is available within the preceding ${DIRECT_CONTEXT_SECONDS / 60} minutes. This is missing evidence, not proof that nobody said anything. Answer a self-contained request; otherwise ask for the relevant comment or a reply to it.`,
+      `No channel conversation is available within the preceding ${contextMinutes} minutes. This is missing evidence, not proof that nobody said anything. Answer a self-contained request; otherwise ask for the relevant comment or a reply to it.`,
     );
   return {
     request: boundedRequest,

@@ -12,6 +12,12 @@ describe("YAP_COMMAND_JSON", () => {
       options: expect.arrayContaining([
         expect.objectContaining({ name: "direct-enabled", type: 5 }),
         expect.objectContaining({
+          name: "direct-context-minutes",
+          type: 4,
+          min_value: 1,
+          max_value: 1440,
+        }),
+        expect.objectContaining({
           name: "direct-cooldown-seconds",
           type: 4,
           min_value: 0,

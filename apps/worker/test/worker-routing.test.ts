@@ -99,6 +99,7 @@ const config = {
   setupComplete: true,
   directResponsesEnabled: false,
   directCooldownSeconds: 30,
+  directContextMinutes: 30,
   targetType: "role",
   monitoredRoleId: "role",
   monitoredUserId: null,
@@ -130,6 +131,7 @@ beforeEach(async () => {
   messages.clear();
   serial = 0;
   config.directResponsesEnabled = false;
+  config.directContextMinutes = 30;
   config.enabled = true;
   repository.isGuildChannelAllowed.mockReset().mockResolvedValue(false);
   harness.directModel.mockResolvedValue({
@@ -168,6 +170,25 @@ afterEach(async () => {
 });
 
 describe("worker lane compatibility", () => {
+  it.each([
+    [30, 0],
+    [60, 1],
+  ])(
+    "uses the guild's %s-minute window for a 45-minute-old message",
+    async (minutes, expectedCount) => {
+      config.directResponsesEnabled = true;
+      config.directContextMinutes = minutes!;
+      const prior = message("Freddy", "Coffee is lunch.", {
+        createdTimestamp: clock - 45 * 60_000,
+      });
+      messages.set(prior.id, prior);
+      await send(message("Observer", "<@bot> what's going on here?"));
+      expect(harness.directModel).toHaveBeenCalledTimes(1);
+      expect(
+        harness.directModel.mock.calls[0]![0].recentConversation,
+      ).toHaveLength(expectedCount!);
+    },
+  );
   it("recognizes a reply to YapBot without another explicit ping", async () => {
     config.directResponsesEnabled = true;
     const prior = message("YapBot", "Coffee isn't lunch.", {

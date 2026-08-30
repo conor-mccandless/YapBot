@@ -62,7 +62,7 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
 
   it("preserves populated legacy configurations and defaults direct off", async () => {
     const after =
-      await connection.client`select to_jsonb(t) - 'direct_responses_enabled' - 'direct_cooldown_seconds' as config from guild_config t order by guild_id`;
+      await connection.client`select to_jsonb(t) - 'direct_responses_enabled' - 'direct_cooldown_seconds' - 'direct_context_minutes' as config from guild_config t order by guild_id`;
     expect(after).toEqual(before);
     expect(
       (await repository.getGuildConfig(guild))?.directResponsesEnabled,
@@ -70,6 +70,12 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
     expect(
       (await repository.getGuildConfig(other))?.directCooldownSeconds,
     ).toBe(30);
+    expect((await repository.getGuildConfig(guild))?.directContextMinutes).toBe(
+      30,
+    );
+    expect((await repository.getGuildConfig(other))?.directContextMinutes).toBe(
+      30,
+    );
     expect(await repository.getGuildChannelIds(guild)).toEqual([
       "200000000000000001",
     ]);
@@ -184,6 +190,53 @@ describe.skipIf(!testUrl)("direct interactions PostgreSQL upgrade", () => {
     expect(
       await connection.client`select * from admin_audit_event where guild_id=${incomplete}`,
     ).toHaveLength(0);
+  });
+  it("persists a per-guild context window across repository reloads and migrations", async () => {
+    const otherBefore = await repository.getGuildConfig(other);
+    const old = await repository.getGuildConfig(guild);
+    expect(
+      await repository.configureGuild({
+        actorUserId: "1",
+        guildId: guild,
+        update: { directContextMinutes: 120 },
+      }),
+    ).toBe(true);
+    await runMigrations(connection.client, migrations);
+    const fresh = await new YapBotRepository(connection).getGuildConfig(guild);
+    expect(fresh).toMatchObject({
+      ...old,
+      updatedAt: expect.any(Date),
+      directContextMinutes: 120,
+    });
+    expect(await repository.getGuildConfig(other)).toEqual(otherBefore);
+    const audit =
+      await connection.client`select change, command_name from admin_audit_event where guild_id=${guild} order by created_at desc,id desc limit 1`;
+    expect(audit[0]).toMatchObject({
+      command_name: "configure",
+      change: { directContextMinutes: 120 },
+    });
+  });
+  it.each([0, 1441, 1.5])(
+    "rejects invalid context minutes %s atomically",
+    async (minutes) => {
+      const old = await repository.getGuildConfig(guild);
+      await expect(
+        repository.configureGuild({
+          actorUserId: "1",
+          guildId: guild,
+          update: { threshold: 10, directContextMinutes: minutes },
+        }),
+      ).rejects.toThrow();
+      expect(await repository.getGuildConfig(guild)).toEqual(old);
+    },
+  );
+  it("enforces context-minute database bounds", async () => {
+    await expect(
+      connection.client`update guild_config set direct_context_minutes=0 where guild_id=${guild}`,
+    ).rejects.toThrow();
+    await expect(
+      connection.client`update guild_config set direct_context_minutes=1441 where guild_id=${guild}`,
+    ).rejects.toThrow();
   });
   it("handles zero quota before first insert and atomic concurrent limits", async () => {
     const now = new Date("2026-08-30T12:00:00Z");

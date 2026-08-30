@@ -45,6 +45,7 @@ export interface BehaviorUpdate {
   windowSeconds?: number;
   directResponsesEnabled?: boolean;
   directCooldownSeconds?: number;
+  directContextMinutes?: number;
 }
 
 export type SetupTarget =
@@ -639,10 +640,15 @@ export class YapBotRepository {
     update: BehaviorUpdate;
   }): Promise<boolean> {
     const cooldown = input.update.directCooldownSeconds;
+    const contextMinutes = input.update.directContextMinutes;
     if (
       Object.keys(input.update).length === 0 ||
       (cooldown !== undefined &&
-        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600))
+        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600)) ||
+      (contextMinutes !== undefined &&
+        (!Number.isInteger(contextMinutes) ||
+          contextMinutes < 1 ||
+          contextMinutes > 1440))
     ) {
       throw new Error("Invalid configuration settings");
     }

@@ -27,6 +27,9 @@ export const guildConfig = pgTable(
     directCooldownSeconds: integer("direct_cooldown_seconds")
       .notNull()
       .default(30),
+    directContextMinutes: integer("direct_context_minutes")
+      .notNull()
+      .default(30),
     guildId: varchar("guild_id", { length: 20 }).primaryKey(),
     monitoredRoleId: varchar("monitored_role_id", { length: 20 }),
     monitoredUserId: varchar("monitored_user_id", { length: 20 }),
@@ -40,6 +43,10 @@ export const guildConfig = pgTable(
     windowSeconds: integer("window_seconds").notNull().default(300),
   },
   (table) => [
+    check(
+      "guild_config_direct_context_minutes_check",
+      sql`${table.directContextMinutes} between 1 and 1440`,
+    ),
     check(
       "guild_config_direct_cooldown_check",
       sql`${table.directCooldownSeconds} between 0 and 3600`,

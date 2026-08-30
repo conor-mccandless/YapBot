@@ -37,6 +37,7 @@ export interface DirectServices {
   botId: string;
   limiter: DirectInteractionLimiter;
   cooldownSeconds: number;
+  contextMinutes: number;
   dailyLimit: number;
   repository: Pick<
     YapBotRepository,
@@ -73,6 +74,7 @@ export async function handleDirectInteraction(
     channelId: request.channelId,
     requesterId: request.author.id,
     requestId: request.id,
+    contextMinutes: services.contextMinutes,
   };
   if (admission.outcome !== "admitted") {
     services.log({ ...base, outcome: admission.outcome });
@@ -96,6 +98,7 @@ export async function handleDirectInteraction(
       services.botId,
       reply,
       limitations,
+      services.contextMinutes,
     );
     const ambiguous = context.subjectResolution.method === "ambiguous";
     let allowModel = false;

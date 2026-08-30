@@ -125,6 +125,7 @@ export async function runDirectDiscordInteraction(
     limiter,
     model,
     cooldownSeconds: config.directCooldownSeconds,
+    contextMinutes: config.directContextMinutes,
     dailyLimit: environment.OPENAI_DIRECT_DAILY_GUILD_LIMIT,
     fetchHistory: async () =>
       [
@@ -178,6 +179,7 @@ export async function runDirectDiscordInteraction(
           requestId: message.id,
           guildId: message.guildId,
           promptVersion: DIRECT_PROMPT_VERSION,
+          contextMinutes: config.directContextMinutes,
           maxOutputTokens: environment.OPENAI_DIRECT_MAX_OUTPUT_TOKENS,
           reasoningEffort: environment.OPENAI_REASONING_EFFORT,
           ...(environment.OPENAI_LOG_PROMPT_DIAGNOSTICS && prompt

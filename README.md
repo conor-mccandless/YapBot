@@ -27,8 +27,12 @@ Direct settings share `/yap configure` with passive settings. `cooldown-seconds`
 still controls passive replies; `direct-cooldown-seconds` controls direct questions.
 Omitted settings stay unchanged, and direct-only edits leave passive counters intact.
 
+The direct context window defaults to **30 minutes per server**. To look back
+further, use `/yap configure direct-context-minutes:120` for two hours. The saved
+range is 1–1,440 minutes (24 hours); `/yap status` shows the current setting.
+
 - Direct requests use only recent history from the current channel (up to 40
-  human messages from 15 minutes, selected from the latest 50 messages, plus an
+  human messages within the configured window, selected from the latest 50 messages, plus an
   explicit same-channel reply). Message text stays bounded to 2,000 characters
   each and 20,000 total; instructions, metadata, personas, and images are additional.
 - Shared nicknames produce a clarification. Unknown names require a mention or
@@ -490,7 +494,7 @@ These commands update the role list without replacing channels, users, or enable
 
 Adding or removing a monitored role clears current in-memory counters, cooldowns, message text, and image references for that server. Members matching multiple users or roles are still counted once per message.
 
-### Trigger behavior
+### Behavior configuration
 
 ```text
 /yap configure threshold:<3-100> window-seconds:<30-3600> cooldown-seconds:<0-86400> ping-target:<true|false>
@@ -498,14 +502,18 @@ Adding or removing a monitored role clears current in-memory counters, cooldowns
 
 The command is restricted to the owner or members with **Manage Server**. Every option is optional, but at least one must be provided.
 
-| Option             | Default after first setup | Description                                                                      |
-| ------------------ | ------------------------- | -------------------------------------------------------------------------------- |
-| `threshold`        | `15`                      | Number of qualifying messages required within the rolling window.                |
-| `window-seconds`   | `300`                     | Rolling-window duration in seconds.                                              |
-| `cooldown-seconds` | `600`                     | Minimum time between replies for the same member. `0` disables cooldown.         |
-| `ping-target`      | `true`                    | Mentions the triggering member in YapBot's reply. Other mentions are suppressed. |
+| Option                    | Default after first setup | Description                                                                                                                     |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `threshold`               | `15`                      | Number of qualifying messages required within the rolling window.                                                               |
+| `window-seconds`          | `300`                     | Rolling-window duration in seconds.                                                                                             |
+| `cooldown-seconds`        | `600`                     | Minimum time between replies for the same member. `0` disables cooldown.                                                        |
+| `ping-target`             | `true`                    | Mentions the triggering member in YapBot's reply. Other mentions are suppressed.                                                |
+| `direct-enabled`          | `false`                   | Allows direct questions in configured channels while YapBot is enabled.                                                         |
+| `direct-cooldown-seconds` | `30`                      | Separate per-requester cooldown for direct questions (0–3,600 seconds).                                                         |
+| `direct-context-minutes`  | `30`                      | Direct history lookback (1–1,440 minutes), still bounded to 40 human messages from the latest 50 and 20,000 content characters. |
 
-Updating behavior clears all current in-memory counters, cooldowns, message text, and image references for that server.
+Updating passive options clears current in-memory counters, cooldowns, message text,
+and image references for that server. Direct-only updates preserve passive state.
 
 ### Per-user personas
 
