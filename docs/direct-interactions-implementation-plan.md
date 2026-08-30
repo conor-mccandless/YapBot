@@ -1,6 +1,6 @@
 # YapBot direct interactions: implementation and acceptance plan
 
-Status: implemented as an opt-in feature preview on `codex/direct-interactions-v1`;
+Status: deployed as an opt-in feature preview on `codex/direct-interactions-v1`;
 automated verification is complete and real Discord acceptance is still
 required. Target release: v0.3.0 (not yet tagged or promoted).
 
@@ -12,7 +12,7 @@ Direct interactions remain disabled in existing guilds until explicitly enabled.
 ### Verification completed (2026-08-30)
 
 - 158 automated tests passed, including five real PostgreSQL upgrade, persistence,
-  authorization-at-repository-boundary, and quota tests in a disposable database.
+  configuration-isolation, and quota tests in a disposable database.
   Worker orchestration tests cover independent passive counters, direct requests
   from unmonitored users, third-message bypass, cooldown rejection, and replies.
 - Type checking, lint, full-repository formatting checks, and container build passed.
@@ -24,6 +24,11 @@ Direct interactions remain disabled in existing guilds until explicitly enabled.
   Steve is unsuccessfully defending nutrition. It's a tiny culinary fraud trial."
 - Real-user manual acceptance, image-question quality, and multi-account live
   cooldown testing remain required before a v0.3.0 release tag.
+- Feature code commit: `d608d5b`; deployed worker image begins `c1603fa0efea`.
+  Both guilds connected after deployment. Existing configuration checksums match
+  the predeployment snapshot; direct interactions remain false with a 30-second
+  cooldown in both guilds. Database backup and previous worker image retained
+  locally for rollback. No release tag or GitHub push was performed.
 
 ### Implementation notes
 
