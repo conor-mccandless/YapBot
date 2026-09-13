@@ -68,6 +68,19 @@ describe("YapResponseGenerator", () => {
     });
   });
 
+  it.each([
+    "You turned “what are you playing?” into a live Andres broadcast before anyone answered, so three rapid-fire yaps summoned me. Stop drip-feeding the channel; send the next streaming bulletin as one complete post.",
+    "Three rapid-fire yaps turned “you guys playing anything?” into an Andres scouting report, so YapBot clocked in. Stop yapping and make the next gaming bulletin one complete post.",
+  ])("accepts a two-sentence reply with a quoted question", async (reply) => {
+    const request = vi.fn().mockResolvedValue(completed(reply));
+    const generator = new YapResponseGenerator(request, () => "fallback");
+
+    await expect(
+      generator.generate("Andres is instantly playing that", true),
+    ).resolves.toMatchObject({ content: reply, source: "openai" });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("passes trigger metadata to the OpenAI request", async () => {
     const request = vi
       .fn()
@@ -256,7 +269,7 @@ describe("YapResponseGenerator", () => {
       source: "static",
     });
     await expect(oneSentence.generate("hello", true)).resolves.toMatchObject({
-      fallbackReason: "oversized_output",
+      fallbackReason: "invalid_output_contract",
       source: "static",
     });
   });
@@ -852,6 +865,21 @@ describe("generated response validation", () => {
       ),
     ).toBe(true);
     expect(isGeneratedResponseWithinLimits("Only one sentence.")).toBe(false);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "You turned “what are you playing?” into a live broadcast. Stop yapping and post the whole update at once.",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "He asked, “Are you playing?” Stop yapping and answer him.",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "You asked “what?” and then posted another question? Stop yapping. Make it one post.",
+      ),
+    ).toBe(false);
     expect(
       isGeneratedResponseWithinLimits(
         "One sentence. Two sentences. Three sentences.",

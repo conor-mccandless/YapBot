@@ -326,7 +326,7 @@ export class YapResponseGenerator {
       );
       if (retryValidationIssues.length > 0) {
         return this.fallback(
-          selectValidationFallbackReason(retryValidationIssues),
+          selectValidationFallbackReason(retryValidationIssues, retryOutput),
           openAIMetadata,
         );
       }
@@ -647,9 +647,20 @@ export function sanitizeGeneratedResponse(value: string): string {
 
 export function isGeneratedResponseWithinLimits(value: string): boolean {
   const wordCount = value.split(/\s+/).filter(Boolean).length;
-  const sentenceCount =
-    value.match(/[.!?]+(?:["'\u2019\u201d\u00bb)\]}]+)?(?=\s|$)/gu)?.length ??
-    0;
+  let sentenceCount = 0;
+  for (const match of value.matchAll(
+    /[.!?]+(?:["'\u2019\u201d\u00bb)\]}]+)?(?=\s|$)/gu,
+  )) {
+    const endsWithCloser = /["'\u2019\u201d\u00bb)\]}]/u.test(
+      match[0].at(-1) ?? "",
+    );
+    const followingText = value.slice(match.index + match[0].length);
+    // A quoted question can be part of a larger sentence: “what?” became a saga.
+    if (endsWithCloser && /^\s+\p{Ll}/u.test(followingText)) {
+      continue;
+    }
+    sentenceCount += 1;
+  }
   return (
     value.length <= MAX_RESPONSE_CHARACTERS &&
     wordCount <= MAX_RESPONSE_WORDS &&
@@ -763,12 +774,17 @@ function explicitlyAsksAboutLink(value: string): boolean {
 
 function selectValidationFallbackReason(
   issues: readonly YapResponseValidationIssue[],
+  value: string,
 ): FallbackReason {
   if (issues.includes("empty_output")) {
     return "empty_output";
   }
   if (issues.includes("output_format")) {
-    return "oversized_output";
+    const wordCount = value.split(/\s+/).filter(Boolean).length;
+    return value.length > MAX_RESPONSE_CHARACTERS ||
+      wordCount > MAX_RESPONSE_WORDS
+      ? "oversized_output"
+      : "invalid_output_contract";
   }
   return "invalid_output_contract";
 }
