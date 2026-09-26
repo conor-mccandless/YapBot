@@ -27,6 +27,6 @@ COPY --from=build --chown=node:node /workspace/packages/db/migrations ./packages
 USER node
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-  CMD node -e "process.kill(1, 0)" || exit 1
+  CMD kill -0 1
 
 CMD ["sh", "-c", "node node_modules/@yapbot/db/dist/migrate.js && exec node --enable-source-maps dist/main.js"]
