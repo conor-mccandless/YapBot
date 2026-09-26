@@ -4,7 +4,8 @@ YapBot is a private-beta Discord bot that watches configured user and role lists
 
 OpenAI generation is optional. With an API key, YapBot can use the complete ordered threshold-sized message context, recent eligible images, trigger metadata, and a per-user persona to generate its reply. Without an API key—or when generation fails or reaches its daily limit—it uses a built-in static response pool.
 
-See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
+See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap, and
+[CHANGELOG.md](./CHANGELOG.md) for release history.
 
 The opt-in direct-interaction feature is described in the
 [implementation and acceptance plan](./docs/direct-interactions-implementation-plan.md).

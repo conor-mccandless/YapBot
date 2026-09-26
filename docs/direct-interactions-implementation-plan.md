@@ -1,8 +1,8 @@
 # YapBot direct interactions: implementation and acceptance plan
 
-Status: deployed as an opt-in feature preview on `codex/direct-interactions-v1`;
-automated verification is complete and real Discord acceptance is still
-required. Target release: v0.3.0 (not yet tagged or promoted).
+Status: released as an opt-in feature preview in v0.3.0 on 2026-09-26.
+Automated verification is complete; real Discord acceptance remains a
+post-release validation item before the feature is promoted beyond preview.
 
 This document records the direct-question feature discussed with the project
 owner. It is separate from the image-preview bug fix on
@@ -23,7 +23,8 @@ Direct interactions remain disabled in existing guilds until explicitly enabled.
 - Example recap: "Freddy is trying to rebrand coffee and one biscuit as breakfast;
   Steve is unsuccessfully defending nutrition. It's a tiny culinary fraud trial."
 - Real-user manual acceptance, image-question quality, and multi-account live
-  cooldown testing remain required before a v0.3.0 release tag.
+  cooldown testing remain post-release preview validation items. Direct
+  interactions remain disabled by default to limit exposure until they pass.
 - Feature code commit: `d608d5b`; deployed worker image begins `c1603fa0efea`.
   Both guilds connected after deployment. Existing configuration checksums match
   the predeployment snapshot; direct interactions remain false with a 30-second
@@ -462,10 +463,10 @@ and a short passive window. Confirm actual IDs/personas in diagnostics.
 11. Turn direct responses off and prove passive direct-address behavior returns.
 12. Verify a non-admin cannot change settings and the friend guild remains off.
 
-Release gates: all deterministic tests pass; each manual scenario has a recorded
-result; no wrong-user/channel attribution, duplicate replies, or unauthorized
-config changes; valid direct answers are not rejected for passive wording rules;
-all existing guild config values match the predeployment snapshot.
+Preview-promotion gates: all deterministic tests pass; each manual scenario has
+a recorded result; no wrong-user/channel attribution, duplicate replies, or
+unauthorized config changes; valid direct answers are not rejected for passive
+wording rules; all existing guild config values match the predeployment snapshot.
 
 ## 9. Diagnostics and rollout
 
@@ -479,7 +480,8 @@ Create a recoverable database backup and record the prior worker image before th
 feature deployment. Do not remove or recreate the database volume. Roll out direct
 responses disabled, verify both guilds, then test-guild opt-in. Immediate mitigation
 is `/yap configure direct-enabled:false`; rollback uses the prior worker image without
-reversing the additive schema migration. Publish v0.3.0 only after acceptance.
+reversing the additive schema migration. v0.3.0 ships the feature as an opt-in
+preview; promote it beyond preview only after acceptance.
 
 ## 10. Follow-on interactions (not release blockers)
 
