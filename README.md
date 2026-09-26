@@ -6,6 +6,60 @@ OpenAI generation is optional. With an API key, YapBot can use the complete orde
 
 See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 
+The opt-in direct-interaction feature is described in the
+[implementation and acceptance plan](./docs/direct-interactions-implementation-plan.md).
+
+## Direct questions (feature preview)
+
+Direct questions are **disabled by default**. An owner or member with Manage
+Server can enable them in a configured guild:
+
+```text
+/yap configure direct-enabled:true direct-cooldown-seconds:30
+```
+
+YapBot must also be enabled with `/yap enable`. Any human in its configured text
+channels can then ask `@YapBot what's going on here?`, ask about another recent
+participant by mention or exact display name/username, or reply to YapBot to
+continue a discussion. A reply to a human needs an explicit YapBot address.
+
+Direct settings share `/yap configure` with passive settings. `cooldown-seconds`
+still controls passive replies; `direct-cooldown-seconds` controls direct questions.
+Omitted settings stay unchanged, and direct-only edits leave passive counters intact.
+
+The direct context window defaults to **180 minutes (three hours) per server**.
+Use `/yap configure direct-context-minutes:360` for six hours. The saved
+range is 1–1,440 minutes (24 hours); `/yap status` shows the current setting.
+
+- Direct requests use only recent history from the current channel (up to 40
+  human messages within the configured window, selected from the latest 50 messages, plus an
+  explicit same-channel reply). Message text stays bounded to 2,000 characters
+  each and 20,000 total; instructions, metadata, personas, and images are additional.
+- Shared nicknames produce a clarification. Unknown names require a mention or
+  more context; this is not a guild-wide nickname/alias search.
+- Replies use separate prompting: no mandatory slowdown, trigger explanation,
+  yap keyword, or two-sentence requirement. Existing passive responses are unchanged.
+- Direct answers can use up to 150 words / 1,200 characters, without a fixed
+  sentence count. `OPENAI_DIRECT_MAX_OUTPUT_TOKENS` defaults to 1,200, separate
+  from the passive generation budget. Missing history is acknowledged as missing
+  evidence, not treated as proof that someone said nothing or made no point.
+- Direct requests do not increment or reset passive counters, including when a
+  direct cooldown rejects them. Cooldown rejection is silent to avoid bot spam.
+- The configurable per-requester cooldown has a separate 5-second guild guard
+  and in-flight protection. Neither affects passive cooldowns.
+- `OPENAI_DIRECT_DAILY_GUILD_LIMIT` defaults to 50 requests per guild per UTC day;
+  each allows at most two model attempts. It is **additional to** the passive
+  `OPENAI_DAILY_GUILD_LIMIT`, not shared with it. Zero stops direct model calls.
+- Existing secure image handling is available; animated GIF/video recognition is
+  not included. No extra Discord privileges or persistent message-history table.
+- `/yap status` shows direct settings. `/yap configure direct-enabled:false` restores
+  legacy ping/threshold behavior. `/yap disable` stops both kinds of response.
+
+For database integration tests, provide `YAPBOT_TEST_DATABASE_URL` pointing only
+to a **fresh disposable** database named `yapbot_direct_test_*`, then run
+`pnpm test`. These tests are skipped without that variable; CI creates its own
+PostgreSQL service and runs them. Never use the live database for test fixtures.
+
 ## Current behavior
 
 - Up to 25 individually selected users and 25 roles per Discord server; a member matching either list is monitored.
@@ -20,7 +74,7 @@ See [PLAN.md](./PLAN.md) for the release boundaries and follow-up roadmap.
 - In-memory message timestamps, bounded message text, image references, and cooldowns; these reset when the worker restarts or configuration changes.
 - One worker replica. Do not run multiple workers against the same Discord application.
 - No voice-channel monitoring, voice transcription, voice-channel chat, threads, image generation, or dashboard.
-- No Discord message text, image bytes/URLs, or generated response text stored in YapBot's database or application logs.
+- No Discord message text or image bytes stored in YapBot's database. Optional prompt/response diagnostic logs can contain member text, URLs, personas, and generated replies; keep those logs private. Direct diagnostics log metadata always and response text only when `OPENAI_LOG_REJECTED_RESPONSES` is enabled (including successful direct responses).
 
 ## Repository layout
 
@@ -141,9 +195,12 @@ ALLOWED_GUILD_IDS=replace-with-test-server-id
 OPENAI_API_KEY=replace-with-openai-project-api-key
 OPENAI_MODEL=gpt-5.6-luna
 OPENAI_IMAGE_MODEL=
+OPENAI_LOG_PROMPT_DIAGNOSTICS=false
+OPENAI_LOG_REJECTED_RESPONSES=false
 OPENAI_REASONING_EFFORT=low
 OPENAI_DAILY_GUILD_LIMIT=100
 OPENAI_MAX_OUTPUT_TOKENS=900
+OPENAI_DIRECT_MAX_OUTPUT_TOKENS=1200
 OPENAI_TIMEOUT_MS=10000
 
 DATABASE_URL=postgresql://yapbot:yapbot_dev@localhost:5432/yapbot
@@ -153,21 +210,24 @@ NODE_ENV=development
 
 ### Environment variable reference
 
-| Variable                   | Required    | Description                                                                                         |
-| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
-| `DISCORD_TOKEN`            | Yes         | Current secret token from the Discord **Bot** page.                                                 |
-| `DISCORD_APPLICATION_ID`   | Yes         | Application ID from **General Information**.                                                        |
-| `ALLOWED_GUILD_IDS`        | Yes         | Comma-separated list of approved Discord server IDs. At least one is required.                      |
-| `OPENAI_API_KEY`           | No          | Owner-funded OpenAI project key. Blank enables static responses only.                               |
-| `OPENAI_MODEL`             | With OpenAI | Model for text-only and, by default, image-bearing requests.                                        |
-| `OPENAI_IMAGE_MODEL`       | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                  |
-| `OPENAI_REASONING_EFFORT`  | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `low`.                               |
-| `OPENAI_DAILY_GUILD_LIMIT` | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.         |
-| `OPENAI_MAX_OUTPUT_TOKENS` | No          | Provider output budget from 32-1,000; default is 900. YapBot rejects visible replies over 45 words. |
-| `OPENAI_TIMEOUT_MS`        | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                    |
-| `DATABASE_URL`             | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                  |
-| `LOG_LEVEL`                | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                           |
-| `NODE_ENV`                 | No          | `development`, `test`, or `production`. Compose sets the worker to `production`.                    |
+| Variable                          | Required    | Description                                                                                                               |
+| --------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`                   | Yes         | Current secret token from the Discord **Bot** page.                                                                       |
+| `DISCORD_APPLICATION_ID`          | Yes         | Application ID from **General Information**.                                                                              |
+| `ALLOWED_GUILD_IDS`               | Yes         | Comma-separated list of approved Discord server IDs. At least one is required.                                            |
+| `OPENAI_API_KEY`                  | No          | Owner-funded OpenAI project key. Blank enables static responses only.                                                     |
+| `OPENAI_MODEL`                    | With OpenAI | Model for text-only and, by default, image-bearing requests.                                                              |
+| `OPENAI_IMAGE_MODEL`              | No          | Optional separate model for requests containing images. Blank uses `OPENAI_MODEL`.                                        |
+| `OPENAI_LOG_PROMPT_DIAGNOSTICS`   | No          | Logs system instructions and structured text input without image bytes; default is `false`.                               |
+| `OPENAI_LOG_REJECTED_RESPONSES`   | No          | Logs rejected initial model output and its correction attempt for prompt tuning; default is `false`.                      |
+| `OPENAI_REASONING_EFFORT`         | No          | `none`, `low`, `medium`, `high`, `xhigh`, or `max`; default is `low`.                                                     |
+| `OPENAI_DAILY_GUILD_LIMIT`        | No          | Maximum reserved generation attempts per server per UTC day, from 1-10,000; default is 100.                               |
+| `OPENAI_MAX_OUTPUT_TOKENS`        | No          | Passive provider output budget from 32-1,000; default is 900. Passive replies are capped at 45 words / 500 characters.    |
+| `OPENAI_DIRECT_MAX_OUTPUT_TOKENS` | No          | Direct provider output budget from 32-4,000; default is 1,200. Direct replies are capped at 150 words / 1,200 characters. |
+| `OPENAI_TIMEOUT_MS`               | No          | OpenAI request deadline from 1,000-60,000 ms; default is 10,000.                                                          |
+| `DATABASE_URL`                    | Yes         | Host-development PostgreSQL URL. Compose overrides it inside the worker container.                                        |
+| `LOG_LEVEL`                       | No          | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`; default is `info`.                                                 |
+| `NODE_ENV`                        | No          | `development`, `test`, or `production`. Compose sets the worker to `production`.                                          |
 
 `.env` and other local secret files are ignored by Git. Verify that with `git status --short` before committing.
 
@@ -434,7 +494,7 @@ These commands update the role list without replacing channels, users, or enable
 
 Adding or removing a monitored role clears current in-memory counters, cooldowns, message text, and image references for that server. Members matching multiple users or roles are still counted once per message.
 
-### Trigger behavior
+### Behavior configuration
 
 ```text
 /yap configure threshold:<3-100> window-seconds:<30-3600> cooldown-seconds:<0-86400> ping-target:<true|false>
@@ -442,14 +502,18 @@ Adding or removing a monitored role clears current in-memory counters, cooldowns
 
 The command is restricted to the owner or members with **Manage Server**. Every option is optional, but at least one must be provided.
 
-| Option             | Default after first setup | Description                                                                      |
-| ------------------ | ------------------------- | -------------------------------------------------------------------------------- |
-| `threshold`        | `15`                      | Number of qualifying messages required within the rolling window.                |
-| `window-seconds`   | `300`                     | Rolling-window duration in seconds.                                              |
-| `cooldown-seconds` | `600`                     | Minimum time between replies for the same member. `0` disables cooldown.         |
-| `ping-target`      | `true`                    | Mentions the triggering member in YapBot's reply. Other mentions are suppressed. |
+| Option                    | Default after first setup | Description                                                                                                                     |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `threshold`               | `15`                      | Number of qualifying messages required within the rolling window.                                                               |
+| `window-seconds`          | `300`                     | Rolling-window duration in seconds.                                                                                             |
+| `cooldown-seconds`        | `600`                     | Minimum time between replies for the same member. `0` disables cooldown.                                                        |
+| `ping-target`             | `true`                    | Mentions the triggering member in YapBot's reply. Other mentions are suppressed.                                                |
+| `direct-enabled`          | `false`                   | Allows direct questions in configured channels while YapBot is enabled.                                                         |
+| `direct-cooldown-seconds` | `30`                      | Separate per-requester cooldown for direct questions (0–3,600 seconds).                                                         |
+| `direct-context-minutes`  | `180`                     | Direct history lookback (1–1,440 minutes), still bounded to 40 human messages from the latest 50 and 20,000 content characters. |
 
-Updating behavior clears all current in-memory counters, cooldowns, message text, and image references for that server.
+Updating passive options clears current in-memory counters, cooldowns, message text,
+and image references for that server. Direct-only updates preserve passive state.
 
 ### Per-user personas
 

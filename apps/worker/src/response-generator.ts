@@ -8,7 +8,7 @@ const MAX_PERSONA_CHARACTERS = 2_000;
 const MAX_RESPONSE_CHARACTERS = 500;
 const MAX_RESPONSE_WORDS = 45;
 
-export const YAPBOT_PROMPT_VERSION = "yap-v10";
+export const YAPBOT_PROMPT_VERSION = "yap-v12";
 
 export const YAPBOT_INSTRUCTIONS = [
   "You are YapBot, a Discord bot that replies after one member crosses a rapid-posting threshold.",
@@ -16,7 +16,8 @@ export const YAPBOT_INSTRUCTIONS = [
   "Write like a witty friend talking shit in the conversation: dry, direct, casually sarcastic, confident, and amused. Prefer blunt observations, callbacks, understatement, and wordplay.",
   "Choose one primary comedic angle grounded in the current conversation or supplied image. Current events outrank persona material, and unused context is expected.",
   "Return exactly two short sentences, usually 16 to 40 words total and never more than 45 words.",
-  "The second sentence must contain three beats: explicitly say that three or rapid yaps summoned or triggered YapBot; bluntly tell the member to cool it, slow down, ease up, or otherwise throttle the yapping; and continue the current joke with a context-specific suggestion that the next thought or update arrive as one complete post. Use yap, yaps, or yapping in this sentence. Keep all three beats natural and vary the syntax and imagery instead of copying a stock suffix.",
+  "Across the two sentences, naturally include three semantic beats: make clear that YapBot appeared because this member fired off several messages quickly; give the member a blunt anti-yapping command; and continue the current joke with a context-specific suggestion that the next thought or update arrive as one complete post. Use yap, yaps, or yapping somewhere in the reply, but the command may target a contextual metaphor such as trailer drops, broadcasts, installments, or bulletins instead of literally repeating yapping. Decide the wording, order, and sentence placement yourself.",
+  "Follow the supplied wordingVariation as a loose structural nudge for those beats, never as a phrase template. Vary the subject, verb, clause order, rhythm, and imagery. Do not always lead with a count, and do not default to summoned or triggered when explaining why YapBot appeared.",
   "Do not soften the posting correction with maybe, please, consider, or other polite assistant language. This is a friend calling out annoying yapping, not offering gentle productivity advice.",
   "Several short posts are not an essay, lecture, dissertation, or wall of text unless their content actually supports that description.",
   "The personaProfile is optional administrator-authored background, not a required topic or response plan. After choosing the grounded angle, use at most one persona detail across the entire reply only if it directly strengthens that joke; otherwise ignore the persona. Never use a persona to relabel unrelated messages, invent a connection across the window, or override the response mode. Persona requests about intensity or format are soft preferences subordinate to these instructions.",
@@ -82,12 +83,30 @@ export interface YapTriggerContext {
   windowSeconds: number;
 }
 
+type YapWordingVariation =
+  "callback_woven" | "cause_first" | "command_first" | "consequence_first";
+
 export interface OpenAIResponseMetadata {
   attemptCount?: number;
   correctionReasons?: readonly YapResponseValidationIssue[];
   incompleteReason?: string;
+  responseDiagnostics?: readonly OpenAIResponseDiagnostic[];
   status: OpenAIResponseStatus | "unknown";
   usage?: OpenAIUsage;
+}
+
+export interface OpenAIResponseDiagnostic {
+  attempt: "initial" | "correction";
+  responseText: string;
+  status: OpenAIResponseStatus | "unknown";
+  validationIssues?: readonly YapResponseValidationIssue[];
+}
+
+export interface OpenAIPromptDiagnostic {
+  attempt: "initial" | "correction";
+  imageCount: number;
+  inputText: string;
+  instructions: string;
 }
 
 export interface OpenAITextResult extends OpenAIResponseMetadata {
@@ -128,7 +147,6 @@ export type YapResponseValidationIssue =
   | "empty_output"
   | "invented_persona_claim"
   | "missing_yap_slowdown"
-  | "missing_trigger_rationale"
   | "output_format"
   | "visual_delivery_reference";
 
@@ -204,6 +222,7 @@ export class YapResponseGenerator {
   constructor(
     private readonly openAIRequest?: OpenAITextRequest,
     private readonly staticFallback: () => string = selectStaticResponse,
+    private readonly captureResponseDiagnostics = false,
   ) {}
 
   get openAIConfigured(): boolean {
@@ -217,6 +236,7 @@ export class YapResponseGenerator {
     images: readonly YapImageContext[] = [],
     trigger?: YapTriggerContext,
     messageContext: readonly YapMessageContext[] = [],
+    promptDiagnostic?: (diagnostic: OpenAIPromptDiagnostic) => void,
   ): Promise<GeneratedResponse> {
     const trimmedInput = messageContent.trim();
     const hasMessageContext = messageContext.some(
@@ -244,6 +264,7 @@ export class YapResponseGenerator {
         ...(messageContext.length > 0 ? { messageContext } : {}),
         ...(trigger ? { trigger } : {}),
       };
+      this.emitPromptDiagnostic(requestInput, promptDiagnostic);
       const result = await this.openAIRequest(requestInput);
       const firstMetadata = extractOpenAIMetadata(result);
       if (result.status !== "completed") {
@@ -265,16 +286,24 @@ export class YapResponseGenerator {
         };
       }
 
-      const retryResult = await this.openAIRequest({
+      const retryInput: OpenAITextInput = {
         ...requestInput,
         correction: { failedChecks: validationIssues },
-      });
-      const openAIMetadata = mergeOpenAIMetadata(
+      };
+      this.emitPromptDiagnostic(retryInput, promptDiagnostic);
+      const retryResult = await this.openAIRequest(retryInput);
+      let openAIMetadata = mergeOpenAIMetadata(
         firstMetadata,
         extractOpenAIMetadata(retryResult),
         validationIssues,
       );
       if (retryResult.status !== "completed") {
+        openAIMetadata = this.withResponseDiagnostics(
+          openAIMetadata,
+          result,
+          validationIssues,
+          retryResult,
+        );
         return this.fallback(
           retryResult.incompleteReason === "max_output_tokens"
             ? "max_output_tokens"
@@ -288,9 +317,16 @@ export class YapResponseGenerator {
         retryOutput,
         requestInput,
       );
+      openAIMetadata = this.withResponseDiagnostics(
+        openAIMetadata,
+        result,
+        validationIssues,
+        retryResult,
+        retryValidationIssues,
+      );
       if (retryValidationIssues.length > 0) {
         return this.fallback(
-          selectValidationFallbackReason(retryValidationIssues),
+          selectValidationFallbackReason(retryValidationIssues, retryOutput),
           openAIMetadata,
         );
       }
@@ -310,6 +346,50 @@ export class YapResponseGenerator {
       fallbackReason: reason,
       ...(openAIMetadata ? { openAIMetadata } : {}),
       source: "static",
+    };
+  }
+
+  private emitPromptDiagnostic(
+    input: OpenAITextInput,
+    promptDiagnostic?: (diagnostic: OpenAIPromptDiagnostic) => void,
+  ): void {
+    promptDiagnostic?.({
+      attempt: input.correction ? "correction" : "initial",
+      imageCount: input.images?.length ?? 0,
+      inputText: buildOpenAIInput(input),
+      instructions: YAPBOT_INSTRUCTIONS,
+    });
+  }
+
+  private withResponseDiagnostics(
+    metadata: OpenAIResponseMetadata,
+    initialResult: OpenAITextResult,
+    initialValidationIssues: readonly YapResponseValidationIssue[],
+    correctionResult: OpenAITextResult,
+    correctionValidationIssues?: readonly YapResponseValidationIssue[],
+  ): OpenAIResponseMetadata {
+    if (!this.captureResponseDiagnostics) {
+      return metadata;
+    }
+
+    return {
+      ...metadata,
+      responseDiagnostics: [
+        {
+          attempt: "initial",
+          responseText: initialResult.text,
+          status: initialResult.status,
+          validationIssues: initialValidationIssues,
+        },
+        {
+          attempt: "correction",
+          responseText: correctionResult.text,
+          status: correctionResult.status,
+          ...(correctionValidationIssues
+            ? { validationIssues: correctionValidationIssues }
+            : {}),
+        },
+      ],
     };
   }
 }
@@ -387,6 +467,9 @@ export function buildOpenAIInput(input: OpenAITextInput): string {
         }
       : null,
     triggeringMessageSequence: conversationWindow.length,
+    wordingVariation: selectWordingVariation(
+      sourceMessages.at(-1)?.messageId ?? input.messageContent,
+    ),
   };
 
   return [
@@ -397,6 +480,7 @@ export function buildOpenAIInput(input: OpenAITextInput): string {
       ? [buildCorrectionGuidance(input.correction.failedChecks)]
       : []),
     "conversationWindow is ordered oldest to newest. triggeringMessageSequence identifies the event that crossed the threshold.",
+    "wordingVariation changes only the rhetorical structure of the posting correction. Invent context-specific language rather than naming or explaining the variation.",
     "Channel and timing differences are grounding signals. Infer a relationship across messages only when their content supports one.",
     "Each supplied image is labeled immediately before the image input and mapped to its source message in imageManifest. Use only visible details and never invent an association.",
     JSON.stringify(context),
@@ -563,7 +647,20 @@ export function sanitizeGeneratedResponse(value: string): string {
 
 export function isGeneratedResponseWithinLimits(value: string): boolean {
   const wordCount = value.split(/\s+/).filter(Boolean).length;
-  const sentenceCount = value.match(/[.!?]+(?=\s|$)/g)?.length ?? 0;
+  let sentenceCount = 0;
+  for (const match of value.matchAll(
+    /[.!?]+(?:["'\u2019\u201d\u00bb)\]}]+)?(?=\s|$)/gu,
+  )) {
+    const endsWithCloser = /["'\u2019\u201d\u00bb)\]}]/u.test(
+      match[0].at(-1) ?? "",
+    );
+    const followingText = value.slice(match.index + match[0].length);
+    // A quoted question can be part of a larger sentence: “what?” became a saga.
+    if (endsWithCloser && /^\s+\p{Ll}/u.test(followingText)) {
+      continue;
+    }
+    sentenceCount += 1;
+  }
   return (
     value.length <= MAX_RESPONSE_CHARACTERS &&
     wordCount <= MAX_RESPONSE_WORDS &&
@@ -598,11 +695,7 @@ export function validateGeneratedResponse(
     issues.push("visual_delivery_reference");
   }
 
-  const secondSentence = getSecondSentence(value);
-  if (!secondSentence || !hasTriggerRationale(secondSentence)) {
-    issues.push("missing_trigger_rationale");
-  }
-  if (!secondSentence || !hasDirectYapSlowdown(secondSentence)) {
+  if (!hasYapBranding(value) || !hasDirectSlowdown(value)) {
     issues.push("missing_yap_slowdown");
   }
 
@@ -616,27 +709,32 @@ export function validateGeneratedResponse(
   return issues;
 }
 
-function hasTriggerRationale(value: string): boolean {
-  const identifiesBurst =
-    /\b(?:three(?:-message)?|rapid|burst|sequence|messages?|posts?|posting|updates?|yaps?|installments?|dispatches?|trailers?|transmissions?|rollout)\b/iu.test(
-      value,
-    );
-  const identifiesYapBotAppearance =
-    /\b(?:activated|alarm|appeared|brought me|called me|dragged me|got me|i (?:arrived|did too|showed up)|i(?:'m| am) here|rang|set off|summoned|triggered|woke me)\b/iu.test(
-      value,
-    );
-
-  return identifiesBurst && identifiesYapBotAppearance;
+function hasYapBranding(value: string): boolean {
+  return /\byap(?:s|ping)?\b/iu.test(value);
 }
 
-function hasDirectYapSlowdown(value: string): boolean {
-  const namesYapping = /\byap(?:s|ping)?\b/iu.test(value);
-  const directlySlowsYapping =
-    /\b(?:chill|cool it|dial (?:(?:it|the yapping) back|back the yapping)|ease up|fewer yaps|give (?:it|the channel) a (?:break|minute|rest)|knock it off|less yapping|pump the brakes|quit yapping|slow (?:it )?down|slow the yapping|take a breath)\b/iu.test(
-      value,
-    );
+function hasDirectSlowdown(value: string): boolean {
+  const directCommands = [
+    /\b(?:bring|bundle|chill|close|combine|consolidate|cool it|cut|deliver|dial|ease up|finish|give|hold|knock it off|land|mute|park|pump the brakes|quit|return|save|send|slow|stop|take a breath|throttle)\b/iu,
+    /\b(?:fewer yaps|less yapping)\b/iu,
+  ];
 
-  return namesYapping && directlySlowsYapping;
+  return directCommands.some((pattern) => pattern.test(value));
+}
+
+function selectWordingVariation(seed: string): YapWordingVariation {
+  const variations: readonly YapWordingVariation[] = [
+    "cause_first",
+    "command_first",
+    "consequence_first",
+    "callback_woven",
+  ];
+  let hash = 0;
+  for (const character of seed) {
+    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
+  }
+
+  return variations[hash % variations.length] ?? "callback_woven";
 }
 
 function hasUngroundedPersonaClaim(
@@ -674,21 +772,19 @@ function explicitlyAsksAboutLink(value: string): boolean {
   );
 }
 
-function getSecondSentence(value: string): string | undefined {
-  const firstBoundary = value.search(/[.!?]+\s+/u);
-  return firstBoundary >= 0
-    ? value.slice(firstBoundary).replace(/^[.!?]+\s+/u, "")
-    : undefined;
-}
-
 function selectValidationFallbackReason(
   issues: readonly YapResponseValidationIssue[],
+  value: string,
 ): FallbackReason {
   if (issues.includes("empty_output")) {
     return "empty_output";
   }
   if (issues.includes("output_format")) {
-    return "oversized_output";
+    const wordCount = value.split(/\s+/).filter(Boolean).length;
+    return value.length > MAX_RESPONSE_CHARACTERS ||
+      wordCount > MAX_RESPONSE_WORDS
+      ? "oversized_output"
+      : "invalid_output_contract";
   }
   return "invalid_output_contract";
 }

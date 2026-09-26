@@ -128,7 +128,9 @@ export const YAP_COMMAND = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName("configure")
-      .setDescription("Update threshold, window, cooldown, or ping behavior")
+      .setDescription(
+        "Update passive yap behavior and direct-question settings",
+      )
       .addIntegerOption((option) =>
         option
           .setName("threshold")
@@ -146,7 +148,7 @@ export const YAP_COMMAND = new SlashCommandBuilder()
       .addIntegerOption((option) =>
         option
           .setName("cooldown-seconds")
-          .setDescription("Delay between replies per member (0-86400 seconds)")
+          .setDescription("Passive yap cooldown per member (0-86400 seconds)")
           .setMinValue(0)
           .setMaxValue(86_400),
       )
@@ -154,6 +156,31 @@ export const YAP_COMMAND = new SlashCommandBuilder()
         option
           .setName("ping-target")
           .setDescription("Mention the triggering member in the reply"),
+      )
+      .addBooleanOption((option) =>
+        option
+          .setName("direct-enabled")
+          .setDescription(
+            "Allow direct questions from humans in configured channels",
+          ),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("direct-cooldown-seconds")
+          .setDescription(
+            "Direct-question cooldown per requester (0-3600 seconds)",
+          )
+          .setMinValue(0)
+          .setMaxValue(3600),
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName("direct-context-minutes")
+          .setDescription(
+            "Direct-question history lookback (1-1440 minutes; default 180 / 3 hours)",
+          )
+          .setMinValue(1)
+          .setMaxValue(1440),
       ),
   )
   .addSubcommand((subcommand) =>

@@ -68,6 +68,19 @@ describe("YapResponseGenerator", () => {
     });
   });
 
+  it.each([
+    "You turned “what are you playing?” into a live Andres broadcast before anyone answered, so three rapid-fire yaps summoned me. Stop drip-feeding the channel; send the next streaming bulletin as one complete post.",
+    "Three rapid-fire yaps turned “you guys playing anything?” into an Andres scouting report, so YapBot clocked in. Stop yapping and make the next gaming bulletin one complete post.",
+  ])("accepts a two-sentence reply with a quoted question", async (reply) => {
+    const request = vi.fn().mockResolvedValue(completed(reply));
+    const generator = new YapResponseGenerator(request, () => "fallback");
+
+    await expect(
+      generator.generate("Andres is instantly playing that", true),
+    ).resolves.toMatchObject({ content: reply, source: "openai" });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("passes trigger metadata to the OpenAI request", async () => {
     const request = vi
       .fn()
@@ -256,7 +269,7 @@ describe("YapResponseGenerator", () => {
       source: "static",
     });
     await expect(oneSentence.generate("hello", true)).resolves.toMatchObject({
-      fallbackReason: "oversized_output",
+      fallbackReason: "invalid_output_contract",
       source: "static",
     });
   });
@@ -274,7 +287,8 @@ describe("YapResponseGenerator", () => {
           "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
         ),
       );
-    const generator = new YapResponseGenerator(request, () => "fallback");
+    const promptDiagnostic = vi.fn();
+    const generator = new YapResponseGenerator(request, () => "fallback", true);
     const images = [image("message-1")];
     const messageContext = [
       message(1, "look at this", { eligibleImageAttachmentCount: 1 }),
@@ -290,6 +304,7 @@ describe("YapResponseGenerator", () => {
         images,
         undefined,
         messageContext,
+        promptDiagnostic,
       ),
     ).resolves.toEqual({
       content:
@@ -297,6 +312,22 @@ describe("YapResponseGenerator", () => {
       openAIMetadata: {
         attemptCount: 2,
         correctionReasons: ["visual_delivery_reference"],
+        responseDiagnostics: [
+          {
+            attempt: "initial",
+            responseText:
+              "That mystery link is certainly mysterious. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
+            status: "completed",
+            validationIssues: ["visual_delivery_reference"],
+          },
+          {
+            attempt: "correction",
+            responseText:
+              "That dog is wearing sunglasses like the allegations just arrived. Your rapid yaps summoned me; cool it with the yapping and let the next exhibit arrive complete.",
+            status: "completed",
+            validationIssues: [],
+          },
+        ],
         status: "completed",
       },
       source: "openai",
@@ -308,6 +339,19 @@ describe("YapResponseGenerator", () => {
     expect(buildOpenAIInput(request.mock.calls[1]?.[0])).toContain(
       "CORRECTION RETRY",
     );
+    expect(promptDiagnostic).toHaveBeenCalledTimes(2);
+    expect(promptDiagnostic.mock.calls[0]?.[0]).toMatchObject({
+      attempt: "initial",
+      imageCount: 1,
+      inputText: expect.stringContaining("RESPONSE MODE visual_post"),
+      instructions: YAPBOT_INSTRUCTIONS,
+    });
+    expect(promptDiagnostic.mock.calls[1]?.[0]).toMatchObject({
+      attempt: "correction",
+      imageCount: 1,
+      inputText: expect.stringContaining("CORRECTION RETRY"),
+      instructions: YAPBOT_INSTRUCTIONS,
+    });
   });
 
   it("stops after one correction and fails closed if it remains invalid", async () => {
@@ -594,15 +638,47 @@ describe("response decision tree and prompt context", () => {
     expect(json.conversationWindow[0]?.content).toHaveLength(2_000);
   });
 
-  it("defines the v10 blunt anti-yap output contract", () => {
+  it("varies the rhetorical structure from the triggering message id", () => {
+    const variations = Array.from({ length: 4 }, (_, index) => {
+      const sourceMessage = {
+        ...message(index + 1, "hello"),
+        messageId: `variation-${index}`,
+      };
+      const input = buildOpenAIInput({
+        messageContent: "hello",
+        messageContext: [sourceMessage],
+      });
+      const json = JSON.parse(input.split("\n").at(-1) ?? "{}") as {
+        wordingVariation: string;
+      };
+
+      return json.wordingVariation;
+    });
+
+    expect(new Set(variations)).toEqual(
+      new Set([
+        "callback_woven",
+        "cause_first",
+        "command_first",
+        "consequence_first",
+      ]),
+    );
+  });
+
+  it("defines the v12 varied contextual anti-yap output contract", () => {
     expect(YAPBOT_INSTRUCTIONS).toContain("exactly two short sentences");
     expect(YAPBOT_INSTRUCTIONS).toContain(
-      "three or rapid yaps summoned or triggered YapBot",
+      "YapBot appeared because this member fired off several messages quickly",
     );
-    expect(YAPBOT_INSTRUCTIONS).toContain("bluntly tell the member to cool it");
+    expect(YAPBOT_INSTRUCTIONS).toContain("blunt anti-yapping command");
     expect(YAPBOT_INSTRUCTIONS).toContain(
-      "Use yap, yaps, or yapping in this sentence",
+      "command may target a contextual metaphor",
     );
+    expect(YAPBOT_INSTRUCTIONS).toContain(
+      "Use yap, yaps, or yapping somewhere in the reply",
+    );
+    expect(YAPBOT_INSTRUCTIONS).toContain("wordingVariation");
+    expect(YAPBOT_INSTRUCTIONS).toContain("Do not always lead with a count");
     expect(YAPBOT_INSTRUCTIONS).toContain(
       "not offering gentle productivity advice",
     );
@@ -620,7 +696,7 @@ describe("response decision tree and prompt context", () => {
     );
     expect(YAPBOT_INSTRUCTIONS).not.toContain("persona_callback");
     expect(YAPBOT_INSTRUCTIONS).not.toContain("bundle the next");
-    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v10");
+    expect(YAPBOT_PROMPT_VERSION).toBe("yap-v12");
   });
 });
 
@@ -687,13 +763,7 @@ describe("buildOpenAIContent", () => {
 });
 
 describe("generated response validation", () => {
-  it("checks trigger rationale and invented biography only when detectable", () => {
-    expect(
-      validateGeneratedResponse(
-        "Three posts for one thought is premium serialization. Keep doing exactly that forever.",
-        { messageContent: "hello" },
-      ),
-    ).toContain("missing_trigger_rationale");
+  it("checks invented biography only when detectable", () => {
     expect(
       validateGeneratedResponse(
         "Your boss must love these updates. Three rapid yaps woke me up; cool it with the yapping and finish the next thought before posting.",
@@ -720,25 +790,52 @@ describe("generated response validation", () => {
         "That threat assessment expanded by habitat. Three rapid dispatches summoned YapBot; let the next danger report arrive as one complete briefing.",
         { messageContent: "hello" },
       ),
-    ).not.toContain("missing_trigger_rationale");
-    expect(
-      validateGeneratedResponse(
-        "That threat assessment expanded by habitat. Three rapid dispatches summoned YapBot; let the next danger report arrive as one complete briefing.",
-        { messageContent: "hello" },
-      ),
     ).toContain("missing_yap_slowdown");
     expect(
       validateGeneratedResponse(
         "Three updates for one thought is premium serialization. Your rapid yapping is why I'm here; pump the brakes and land the plane before opening another runway.",
         { messageContent: "hello" },
       ),
-    ).not.toContain("missing_trigger_rationale");
+    ).not.toContain("missing_yap_slowdown");
+
+    const variedReplies = [
+      "That danger report has more episodes than hazards. Park the yapping until the next briefing is finished; several dispatches are why I got involved.",
+      "Your coffee run somehow developed patch notes. The third yap tripped my alarm, so close the live feed until the next update has an ending.",
+      "One pocket search did not need a press office. Cut the feed and finish the next yap first; those back-to-back bulletins brought me in.",
+      "Three trailers and still no feature is nasty work. I am here because the yaps became a rollout; hold the next one until the reveal exists.",
+    ];
+    for (const reply of variedReplies) {
+      expect(
+        validateGeneratedResponse(reply, { messageContent: "hello" }),
+      ).toEqual([]);
+    }
+
     expect(
       validateGeneratedResponse(
-        "Three updates for one thought is premium serialization. Your rapid yapping is why I'm here; pump the brakes and land the plane before opening another runway.",
+        "That danger report has more episodes than hazards. Several dispatches brought me in, so let the next briefing arrive complete.",
         { messageContent: "hello" },
       ),
-    ).not.toContain("missing_yap_slowdown");
+    ).toContain("missing_yap_slowdown");
+    expect(
+      validateGeneratedResponse(
+        "That danger report has more episodes than hazards. Several yaps brought me in, and the next briefing can arrive complete.",
+        { messageContent: "hello" },
+      ),
+    ).toContain("missing_yap_slowdown");
+  });
+
+  it("accepts natural slowdown conjugations without requiring an appearance rationale", () => {
+    const acceptableReplies = [
+      "That coat of arms really said balls three times, then hired a herald to draw the receipts. Three quick yaps summoned the court; stop broadcasting and bring the next decree as one complete post.",
+      "Three balls on a coat of arms and you still needed a two-part press conference. Stop yapping; return with one complete heraldic briefing once the giggling ends.",
+      "That side-eye says the cape already knows this is you. Three yaps summoned me, so stop the trailer drops and bring the next medieval identity crisis as one complete post.",
+    ];
+
+    for (const reply of acceptableReplies) {
+      expect(
+        validateGeneratedResponse(reply, { messageContent: "hello" }),
+      ).toEqual([]);
+    }
   });
 
   it("allows delivery wording when the member explicitly asks about a URL", () => {
@@ -770,6 +867,21 @@ describe("generated response validation", () => {
     expect(isGeneratedResponseWithinLimits("Only one sentence.")).toBe(false);
     expect(
       isGeneratedResponseWithinLimits(
+        "You turned “what are you playing?” into a live broadcast. Stop yapping and post the whole update at once.",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "He asked, “Are you playing?” Stop yapping and answer him.",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "You asked “what?” and then posted another question? Stop yapping. Make it one post.",
+      ),
+    ).toBe(false);
+    expect(
+      isGeneratedResponseWithinLimits(
         "One sentence. Two sentences. Three sentences.",
       ),
     ).toBe(false);
@@ -778,5 +890,15 @@ describe("generated response validation", () => {
         `${Array.from({ length: 46 }, (_, index) => `word${index + 1}`).join(" ")}. Final sentence.`,
       ),
     ).toBe(false);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "That side-eye says the cloaked guy already regrets your “or else.” Quit yapping in threat trailers; bring the next royal warning as one complete decree.",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedResponseWithinLimits(
+        "That side-eye says the cloaked guy already heard your “or else.” Stop yapping in cliffhangers; three rapid posts summoned me, so bring the whole threat next time.",
+      ),
+    ).toBe(true);
   });
 });

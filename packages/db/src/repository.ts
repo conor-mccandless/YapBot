@@ -3,6 +3,7 @@ import { and, count, eq, gte, lt } from "drizzle-orm";
 import type { DatabaseConnection } from "./index.js";
 import {
   adminAuditEvent,
+  directLlmDailyUsage,
   guildChannel,
   guildConfig,
   guildMonitoredRole,
@@ -42,6 +43,9 @@ export interface BehaviorUpdate {
   pingTarget?: boolean;
   threshold?: number;
   windowSeconds?: number;
+  directResponsesEnabled?: boolean;
+  directCooldownSeconds?: number;
+  directContextMinutes?: number;
 }
 
 export type SetupTarget =
@@ -50,6 +54,24 @@ export type SetupTarget =
 
 export class YapBotRepository {
   constructor(private readonly connection: DatabaseConnection) {}
+
+  async tryReserveDirectGeneration(
+    guildId: string,
+    dailyLimit: number,
+    now = new Date(),
+  ): Promise<boolean> {
+    if (!Number.isInteger(dailyLimit) || dailyLimit <= 0) return false;
+    const usageDate = now.toISOString().slice(0, 10);
+    const rows = await this.connection.client<{ generation_count: number }[]>`
+      insert into direct_llm_daily_usage (guild_id, usage_date, generation_count)
+      values (${guildId}, ${usageDate}, 1)
+      on conflict (guild_id, usage_date) do update
+      set generation_count = direct_llm_daily_usage.generation_count + 1
+      where direct_llm_daily_usage.generation_count < ${dailyLimit}
+      returning generation_count
+    `;
+    return rows.length > 0;
+  }
 
   async getGuildConfig(guildId: string): Promise<GuildConfig | undefined> {
     return this.connection.database.query.guildConfig.findFirst({
@@ -617,12 +639,30 @@ export class YapBotRepository {
     guildId: string;
     update: BehaviorUpdate;
   }): Promise<boolean> {
+    const cooldown = input.update.directCooldownSeconds;
+    const contextMinutes = input.update.directContextMinutes;
+    if (
+      Object.keys(input.update).length === 0 ||
+      (cooldown !== undefined &&
+        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600)) ||
+      (contextMinutes !== undefined &&
+        (!Number.isInteger(contextMinutes) ||
+          contextMinutes < 1 ||
+          contextMinutes > 1440))
+    ) {
+      throw new Error("Invalid configuration settings");
+    }
     const rows = await this.connection.database.transaction(
       async (transaction) => {
         const updated = await transaction
           .update(guildConfig)
           .set({ ...input.update, updatedAt: new Date() })
-          .where(eq(guildConfig.guildId, input.guildId))
+          .where(
+            and(
+              eq(guildConfig.guildId, input.guildId),
+              eq(guildConfig.setupComplete, true),
+            ),
+          )
           .returning({ guildId: guildConfig.guildId });
 
         if (updated.length > 0) {
@@ -739,6 +779,9 @@ export class YapBotRepository {
       await transaction
         .delete(llmDailyUsage)
         .where(lt(llmDailyUsage.usageDate, usageCutoff));
+      await transaction
+        .delete(directLlmDailyUsage)
+        .where(lt(directLlmDailyUsage.usageDate, usageCutoff));
     });
   }
 }

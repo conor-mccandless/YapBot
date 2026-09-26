@@ -121,7 +121,21 @@ export function normalizeYapBotMention(
 }
 
 export function directlyAddressesYapBot(content: string): boolean {
-  return /(?:^|\s)@YapBot\b/iu.test(content);
+  return (
+    /(?:^|\s)@YapBot\b/iu.test(content) ||
+    /^\s*(?:hey[\s,]+)?YapBot\b/iu.test(content)
+  );
+}
+
+export function directlyMentionsYapBotRole(
+  roles: Iterable<{ tags: { botId?: string } | null }>,
+  botUserId?: string,
+): boolean {
+  if (!botUserId) {
+    return false;
+  }
+
+  return [...roles].some((role) => role.tags?.botId === botUserId);
 }
 
 export async function directlyRepliesToYapBot(

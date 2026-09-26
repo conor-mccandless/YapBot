@@ -30,6 +30,7 @@ const ADMIN_SUBCOMMANDS = new Set([
 ]);
 
 export interface CommandContext {
+  directLimiter?: { clearGuild(guildId: string): void };
   allowedGuildIds: ReadonlySet<string>;
   detector: RollingTriggerDetector;
   imageContextStore?: { clearGuild(guildId: string): void };
@@ -540,11 +541,47 @@ async function handleConfigure(
   const windowSeconds = interaction.options.getInteger("window-seconds");
   const cooldownSeconds = interaction.options.getInteger("cooldown-seconds");
   const pingTarget = interaction.options.getBoolean("ping-target");
-  const update = {
+  const directResponsesEnabled =
+    interaction.options.getBoolean("direct-enabled");
+  const directCooldownSeconds = interaction.options.getInteger(
+    "direct-cooldown-seconds",
+  );
+  const directContextMinutes = interaction.options.getInteger(
+    "direct-context-minutes",
+  );
+  if (
+    directContextMinutes !== null &&
+    (!Number.isInteger(directContextMinutes) ||
+      directContextMinutes < 1 ||
+      directContextMinutes > 1440)
+  ) {
+    await interaction.editReply(
+      "direct-context-minutes must be an integer from 1 to 1440.",
+    );
+    return;
+  }
+  if (
+    directCooldownSeconds !== null &&
+    (!Number.isInteger(directCooldownSeconds) ||
+      directCooldownSeconds < 0 ||
+      directCooldownSeconds > 3600)
+  ) {
+    await interaction.editReply(
+      "direct-cooldown-seconds must be an integer from 0 to 3600.",
+    );
+    return;
+  }
+  const passiveUpdate = {
     ...(threshold === null ? {} : { threshold }),
     ...(windowSeconds === null ? {} : { windowSeconds }),
     ...(cooldownSeconds === null ? {} : { cooldownSeconds }),
     ...(pingTarget === null ? {} : { pingTarget }),
+  };
+  const update = {
+    ...passiveUpdate,
+    ...(directResponsesEnabled === null ? {} : { directResponsesEnabled }),
+    ...(directCooldownSeconds === null ? {} : { directCooldownSeconds }),
+    ...(directContextMinutes === null ? {} : { directContextMinutes }),
   };
 
   if (Object.keys(update).length === 0) {
@@ -562,9 +599,25 @@ async function handleConfigure(
     return;
   }
 
-  clearRuntimeState(context, interaction.guildId);
+  const hasPassiveUpdate = Object.keys(passiveUpdate).length > 0;
+  if (hasPassiveUpdate) {
+    clearRuntimeState(context, interaction.guildId);
+  } else {
+    context.directLimiter?.clearGuild(interaction.guildId);
+  }
   await interaction.editReply(
-    "YapBot configuration updated. Runtime counters were reset.",
+    "YapBot configuration updated. " +
+      (hasPassiveUpdate
+        ? "Runtime counters were reset."
+        : "Passive counters were not reset.") +
+      (directResponsesEnabled !== null ||
+      directCooldownSeconds !== null ||
+      directContextMinutes !== null
+        ? " Direct questions also require `/yap enable`; a separate 5-second server guard applies."
+        : "") +
+      (directContextMinutes !== null
+        ? ` Direct context lookback: ${directContextMinutes} minutes (up to 40 human messages from the latest 50 channel messages).`
+        : ""),
   );
 }
 
@@ -645,6 +698,7 @@ async function handleDisable(
 }
 
 function clearRuntimeState(context: CommandContext, guildId: string): void {
+  context.directLimiter?.clearGuild(guildId);
   context.detector.clearGuild(guildId);
   context.imageContextStore?.clearGuild(guildId);
   context.messageContextStore?.clearGuild(guildId);
@@ -699,6 +753,9 @@ async function handleStatus(
       `**Channels (${channelIds.length}):** ${channelIds.length > 0 ? channelIds.map((channelId) => `<#${channelId}>`).join(", ") : "not configured"}`,
       `**Threshold:** ${config.threshold} messages / ${config.windowSeconds} seconds`,
       `**Cooldown:** ${config.cooldownSeconds} seconds`,
+      `**Direct questions:** ${config.directResponsesEnabled ? "enabled" : "disabled"} (requires bot enabled)`,
+      `**Direct cooldown:** ${config.directCooldownSeconds} seconds per requester; 5-second server guard`,
+      `**Direct context:** ${config.directContextMinutes} minutes; up to 40 human messages from the latest 50 channel messages`,
       `**Ping target:** ${config.pingTarget ? "yes" : "no"}`,
       `**Triggers today (UTC):** ${triggersToday}`,
       `**Permissions:** ${channelDiagnostics.length === 0 ? "ready" : channelDiagnostics.map((result) => `<#${result.channelId}>: ${result.diagnostic}`).join("; ")}`,

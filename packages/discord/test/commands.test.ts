@@ -4,6 +4,40 @@ import { describe, expect, it } from "vitest";
 import { YAP_COMMAND_JSON } from "../src/index.js";
 
 describe("YAP_COMMAND_JSON", () => {
+  it("exposes an optional direct toggle and bounded separate cooldown", () => {
+    const command = YAP_COMMAND_JSON.options?.find(
+      (option) => option.name === "configure",
+    );
+    expect(command).toMatchObject({
+      options: expect.arrayContaining([
+        expect.objectContaining({ name: "direct-enabled", type: 5 }),
+        expect.objectContaining({
+          name: "direct-context-minutes",
+          type: 4,
+          min_value: 1,
+          max_value: 1440,
+        }),
+        expect.objectContaining({
+          name: "direct-cooldown-seconds",
+          type: 4,
+          min_value: 0,
+          max_value: 3600,
+        }),
+        expect.objectContaining({
+          name: "cooldown-seconds",
+          type: 4,
+          min_value: 0,
+          max_value: 86400,
+        }),
+      ]),
+    });
+    expect(command?.options?.every((option) => !option.required)).toBe(true);
+    expect(
+      YAP_COMMAND_JSON.options?.some(
+        (option) => option.name === "direct-config",
+      ),
+    ).toBe(false);
+  });
   it("exposes text-only channel management commands", () => {
     const subcommands = YAP_COMMAND_JSON.options ?? [];
     const names = subcommands.map((option) => option.name);

@@ -20,6 +20,11 @@ const optionalSecretSchema = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const booleanStringSchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
+
 export const environmentSchema = z.object({
   ALLOWED_GUILD_IDS: z
     .string()
@@ -40,6 +45,12 @@ export const environmentSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   OPENAI_API_KEY: optionalSecretSchema,
+  OPENAI_DIRECT_DAILY_GUILD_LIMIT: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10_000)
+    .default(50),
   OPENAI_DAILY_GUILD_LIMIT: z.coerce
     .number()
     .int()
@@ -52,7 +63,15 @@ export const environmentSchema = z.object({
     .min(32)
     .max(1_000)
     .default(900),
+  OPENAI_DIRECT_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(32)
+    .max(4_000)
+    .default(1_200),
   OPENAI_IMAGE_MODEL: optionalSecretSchema,
+  OPENAI_LOG_PROMPT_DIAGNOSTICS: booleanStringSchema,
+  OPENAI_LOG_REJECTED_RESPONSES: booleanStringSchema,
   OPENAI_MODEL: z.string().min(1).default("gpt-5.6-luna"),
   OPENAI_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high", "xhigh", "max"])

@@ -1,3 +1,5 @@
+export * from "./direct.js";
+
 export const BEHAVIOR_BOUNDS = {
   cooldownSeconds: { maximum: 86_400, minimum: 0 },
   threshold: { maximum: 100, minimum: 3 },
@@ -112,7 +114,10 @@ export class RollingTriggerDetector {
     }
 
     state.cooldownUntilMs = input.nowMs + input.cooldownSeconds * 1_000;
-    return { count: state.timestamps.length, outcome: "trigger" };
+    const count = state.timestamps.length;
+    // Consume this burst so it cannot trigger again after cooldown expires.
+    state.timestamps = [];
+    return { count, outcome: "trigger" };
   }
 
   clearGuild(guildId: string): void {
